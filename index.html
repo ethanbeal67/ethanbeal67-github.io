@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Family Weather Station</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 10px;
+            background-color: #121212;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        /* 4-Quadrant Screen Layout */
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 15px;
+            width: 100%;
+            height: 100%;
+        }
+
+        .panel {
+            background-color: #1e1e1e;
+            border-radius: 8px;
+            padding: 15px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+
+        h2 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            font-size: 1.2rem;
+            color: #00adb5;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 5px;
+        }
+
+        #map-panel { padding: 0; position: relative; }
+        #map { width: 100%; height: 100%; border-radius: 8px; }
+
+        /* Scrollable forecast containers */
+        .forecast-list, .hourly-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+
+        /* Horizontal layout for hourly forecasts */
+        .hourly-list {
+            flex-direction: row;
+            overflow-x: auto;
+            overflow-y: hidden;
+            align-items: center;
+        }
+
+        .forecast-day {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #252525;
+            padding: 8px 12px;
+            border-radius: 6px;
+        }
+
+        .forecast-day img { width: 40px; height: 40px; }
+
+        .hourly-card {
+            background: #252525;
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+            min-width: 75px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .hourly-card img { width: 35px; height: 35px; }
+
+        .temp-high { color: #ff5722; font-weight: bold; }
+        .temp-low { color: #00bcd4; font-weight: bold; }
+        .pop { color: #2196f3; font-size: 0.85rem; }
+
+        /* Severe Risks Text Section */
+        #outlook-text {
+            font-size: 1.1rem;
+            line-height: 1.4;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            text-align: center;
+        }
+        
+        .risk-badge {
+            font-size: 1.8rem;
+            font-weight: bold;
+            padding: 10px 20px;
+            border-radius: 8px;
+            margin-top: 10px;
+            text-shadow: 1px 1px 2px black;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard">
+        
+        <div class="panel id="map-panel"">
+            <div id="map"></div>
+        </div>
+
+        <div class="panel">
+            <h2>Severe Weather Outlook</h2>
+            <div id="outlook-text">Loading SPC Convective Outlook Data...</div>
+        </div>
+
+        <div class="panel">
+            <h2>5-Day Forecast</h2>
+            <div class="forecast-list" id="daily-forecast">Loading daily forecast...</div>
+        </div>
+
+        <div class="panel">
+            <h2>Hourly Forecast (Next 12 Hours)</h2>
+            <div class="hourly-list" id="hourly-forecast">Loading hourly data...</div>
+        </div>
+
+    </div>
+
+    <script>
+        // Grab custom parameters from URL (?lat=XX&lon=XX)
+        const urlParams = new URLSearchParams(window.location.search);
+        const lat = parseFloat(urlParams.get('lat')) || 35.4676; // Defaults to OKC
+        const lon = parseFloat(urlParams.get('lon')) || -97.5164;
+        const zoom = parseInt(urlParams.get('zoom')) || 8;
+
+        // --- 1. SET UP MAP (RADAR & ALERTS) ---
+        const map = L.map('map', {
+            center: [lat, lon],
+            zoom: zoom,
+            dragging: false, zoomControl: false, scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false, touchZoom: false
+        });
+
+        // Dark background layer
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+
+        // Standard NWS Live Radar Layer (WMS Service)
+        L.tileLayer.wms("https://opengeo.ncep.noaa.gov/geoserver/conus/conus_bref_qpe/wms", {
+            layers: 'conus_bref_qpe',
+            format: 'image/png',
+            transparent: true,
+            opacity: 0.6
+        }).addTo(map);
+
+        // Real-time local NWS Active Warnings Polygons
+        fetch(`https://api.weather.gov/alerts/active?point=${lat},${lon}`)
+            .then(res => res.json())
+            .then(data => {
+                L.geoJSON(data, {
+                    style: function(feature) {
+                        const event = feature.properties.event;
+                        let color = "#ffeb3b"; // Default Advisory color
+                        if (event.includes("Tornado")) color = "#e91e63";
+                        if (event.includes("Severe Thunderstorm")) color = "#ff5722";
+                        if (event.includes("Flash Flood")) color = "#00bcd4";
+                        return { color: color, weight: 3, fillOpacity: 0.15 };
+                    }
+                }).addTo(map);
+            });
+
+        // --- 2. FETCH NWS FORECAST DATA ---
+        // NWS APIs require a descriptive User-Agent header (part of their rules)
+        const headers = { 'User-Agent': '(myfamilyweatherdashboard.com, contact@weather.com)' };
+
+        fetch(`https://api.weather.gov/points/${lat},${lon}`, { headers })
+            .then(res => res.json())
+            .then(pointData => {
+                const dailyUrl = pointData.properties.forecast;
+                const hourlyUrl = pointData.properties.forecastHourly;
+
+                // Build 5-Day Forecast Panel
+                fetch(dailyUrl, { headers })
+                    .then(res => res.json())
+                    .then(fData => {
+                        const container = document.getElementById('daily-forecast');
+                        container.innerHTML = '';
+                        const periods = fData.properties.periods;
+                        
+                        // Grab only daytime frames (stride by 2 to skip nights)
+                        for (let i = 0; i < periods.length && i < 10; i += 2) {
+                            const day = periods[i];
+                            const night = periods[i+1] || { temperature: 'N/A' };
+                            const pop = day.probabilityOfPrecipitation?.value || 0;
+
+                            container.innerHTML += `
+                                <div class="forecast-day">
+                                    <div style="font-weight:bold; width:100px;">${day.name}</div>
+                                    <img src="${day.icon.split(',')[0]}" alt="icon">
+                                    <div class="pop">${pop > 0 ? '💧 ' + pop + '%' : ''}</div>
+                                    <div>
+                                        <span class="temp-high">${day.temperature}°</span> / 
+                                        <span class="temp-low">${night.temperature}°</span>
+                                    </div>
+                                </div>
+                            `;
+                        }
+                    });
+
+                // Build Hourly Forecast Panel
+                fetch(hourlyUrl, { headers })
+                    .then(res => res.json())
+                    .then(hData => {
+                        const container = document.getElementById('hourly-forecast');
+                        container.innerHTML = '';
+                        const hours = hData.properties.periods.slice(0, 12); // Next 12 hours
+
+                        hours.forEach(hour => {
+                            const time = new Date(hour.startTime).toLocaleTimeString([], { hour: 'numeric' });
+                            const pop = hour.probabilityOfPrecipitation?.value || 0;
+                            container.innerHTML += `
+                                <div class="hourly-card">
+                                    <div style="font-size:0.85rem; color:#aaa;">${time}</div>
+                                    <img src="${hour.icon.split(',')[0]}" alt="icon">
+                                    <div style="font-weight:bold; font-size:1.1rem;">${hour.temperature}°</div>
+                                    <div class="pop" style="font-size:0.75rem;">${pop > 0 ? pop + '%' : ''}</div>
+                                </div>
+                            `;
+                        });
+                    });
+            });
+
+        // --- 3. SPC SEVERE WEATHER OUTLOOK ---
+        const spcUrl = "https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/SPC_wx_outlks/MapServer/1/query?where=1%3D1&outFields=*&f=geojson";
+        fetch(spcUrl)
+            .then(res => res.json())
+            .then(data => {
+                const outlookText = document.getElementById('outlook-text');
+                
+                // Leaflet technique to check which NWS convective zone contains our family coordinates
+                let localRisk = "GENERAL THUNDERSTORMS / NO RISK";
+                let badgeColor = "#2e7d32";
+
+                L.geoJSON(data, {
+                    onEachFeature: function(feature, layer) {
+                        // Check if current coordinate is inside polygon
+                        if (layer.getBounds().contains([lat, lon])) {
+                            const label = feature.properties.LABEL;
+                            if (label === "MRGL") { localRisk = "MARGINAL RISK (1/5)"; badgeColor = "#008b00"; }
+                            if (label === "SLGT") { localRisk = "SLIGHT RISK (2/5)"; badgeColor = "#eeee00"; color="#000";}
+                            if (label === "ENH")  { localRisk = "ENHANCED RISK (3/5)"; badgeColor = "#ff7f00"; }
+                            if (label === "MDT")  { localRisk = "MODERATE RISK (4/5)"; badgeColor = "#ff0000"; }
+                            if (label === "HIGH") { localRisk = "HIGH RISK (5/5)"; badgeColor = "#ff00ff"; }
+                        }
+                    }
+                });
+
+                // Style based on text risk color requirements
+                const textStyle = (localRisk.includes("SLIGHT")) ? "color:#000" : "color:#fff";
+                outlookText.innerHTML = `
+                    <div>Storm Prediction Center Day 1 Forecast for this location:</div>
+                    <div class="risk-badge" style="background-color:${badgeColor}; ${textStyle}">${localRisk}</div>
+                `;
+            });
+
+        // Global refresh: pull down brand new values every 15 minutes
+        setTimeout(() => { window.location.reload(); }, 15 * 60 * 1000);
+    </script>
+</body>
+</html>
