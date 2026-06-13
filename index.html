@@ -284,7 +284,6 @@
             const oneDay = 1000 * 60 * 60 * 24;
             const dayOfYear = Math.floor(diff / oneDay);
 
-            // Approximating zenith calculations for daylight tracking
             const lngHour = lon / 15;
             const tRise = dayOfYear + ((6 - lngHour) / 24);
             const tSet = dayOfYear + ((18 - lngHour) / 24);
@@ -321,7 +320,6 @@
             const UT_rise = T_rise + RA_rise - (0.06571 * tRise) - 6.622 - lngHour;
             const UT_set = T_set + RA_set - (0.06571 * tSet) - 6.622 - lngHour;
 
-            // Handle UTC wrapping limits
             const localRiseHours = (UT_rise + 24 + (now.getTimezoneOffset() / -60)) % 24;
             const localSetHours = (UT_set + 24 + (now.getTimezoneOffset() / -60)) % 24;
 
@@ -339,7 +337,6 @@
             document.getElementById('sun-rise').innerText = riseStr;
             document.getElementById('sun-set').innerText = setStr;
 
-            // Evaluate Dark Mode State Rule
             const currentDecimalTime = now.getHours() + (now.getMinutes() / 60);
             if (currentDecimalTime < localRiseHours || currentDecimalTime > localSetHours) {
                 document.body.classList.add('dark-theme');
@@ -348,12 +345,11 @@
             }
         }
 
-        // Run theme/sun evaluation instantly on coordinate footprint
         computeSolarTimes(pinLat, pinLon);
 
         // Initialize maps
         const radarMap = L.map('radarMap', { ...lockSettings, center: [radarCenterLat, radarCenterLon], zoom: radarZoom });
-        const lightBasemap = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(radarMap);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(radarMap);
 
         L.tileLayer.wms("https://tigerweb.geo.census.gov/arcgis/services/TIGERweb/State_County/MapServer/WMSServer", {
             layers: 'Counties', format: 'image/png', transparent: true, opacity: 0.5
@@ -391,16 +387,15 @@
         let warningLayer = null;
 
         function refreshLiveLayers() {
-            // Constantly refresh Day/Night tracking logic loop
             computeSolarTimes(pinLat, pinLon);
 
-            // 1. Refresh Radar Image
             if (radarLayer) { radarMap.removeLayer(radarLayer); }
-            radarLayer = L.tileLayer.wms("https://opengeo.ncep.noaa.gov/geoserver/conus/conus_bref_qpe/wms?cache=" + Date.now(), {
-                layers: 'conus_bref_qpe', format: 'image/png', transparent: true, opacity: 0.55
+            
+            // Live MRMS base reflectivity layer
+            radarLayer = L.tileLayer.wms("https://opengeo.ncep.noaa.gov/geoserver/conus/mrms_bref/wms?cache=" + Date.now(), {
+                layers: 'mrms_bref', format: 'image/png', transparent: true, opacity: 0.55
             }).addTo(radarMap);
 
-            // 2. Fetch Warnings + Full Text Adhering to NWS Header Identification Policies
             fetch(`https://api.weather.gov/alerts/active?point=${pinLat},${pinLon}&cache=${Date.now()}`, { headers })
                 .then(res => res.json())
                 .then(data => {
@@ -429,7 +424,6 @@
                         boxElement.style.display = "none";
                     }
                 }).catch(() => {
-                    // Fail-safe fallback network code (Drops out cleanly to try next loop cycle without throwing visual box error)
                     console.log("NWS data connection packet re-route attempt active.");
                 });
         }
