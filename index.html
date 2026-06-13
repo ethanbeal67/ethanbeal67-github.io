@@ -132,22 +132,6 @@
         .pop { color: #1a73e8; font-size: 0.8rem; font-weight: bold; }
         body.dark-theme .pop { color: #58a6ff; }
 
-        /* Custom Map Text Label Styling */
-        .custom-map-label {
-            background: none !important;
-            border: none !important;
-            box-shadow: none !important;
-            color: #2b2b2b;
-            font-weight: 800;
-            font-size: 11px;
-            text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;
-            white-space: nowrap;
-        }
-        body.dark-theme .custom-map-label {
-            color: #ffffff;
-            text-shadow: -1px -1px 0 #161920, 1px -1px 0 #161920, -1px 1px 0 #161920, 1px 1px 0 #161920;
-        }
-
         /* SPC Overlay Box */
         .severe-breakdown {
             position: absolute;
@@ -300,6 +284,7 @@
             const oneDay = 1000 * 60 * 60 * 24;
             const dayOfYear = Math.floor(diff / oneDay);
 
+            // Approximating zenith calculations for daylight tracking
             const lngHour = lon / 15;
             const tRise = dayOfYear + ((6 - lngHour) / 24);
             const tSet = dayOfYear + ((18 - lngHour) / 24);
@@ -336,6 +321,7 @@
             const UT_rise = T_rise + RA_rise - (0.06571 * tRise) - 6.622 - lngHour;
             const UT_set = T_set + RA_set - (0.06571 * tSet) - 6.622 - lngHour;
 
+            // Handle UTC wrapping limits
             const localRiseHours = (UT_rise + 24 + (now.getTimezoneOffset() / -60)) % 24;
             const localSetHours = (UT_set + 24 + (now.getTimezoneOffset() / -60)) % 24;
 
@@ -353,6 +339,7 @@
             document.getElementById('sun-rise').innerText = riseStr;
             document.getElementById('sun-set').innerText = setStr;
 
+            // Evaluate Dark Mode State Rule
             const currentDecimalTime = now.getHours() + (now.getMinutes() / 60);
             if (currentDecimalTime < localRiseHours || currentDecimalTime > localSetHours) {
                 document.body.classList.add('dark-theme');
@@ -361,11 +348,12 @@
             }
         }
 
+        // Run theme/sun evaluation instantly on coordinate footprint
         computeSolarTimes(pinLat, pinLon);
 
         // Initialize maps
         const radarMap = L.map('radarMap', { ...lockSettings, center: [radarCenterLat, radarCenterLon], zoom: radarZoom });
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(radarMap);
+        const lightBasemap = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(radarMap);
 
         L.tileLayer.wms("https://tigerweb.geo.census.gov/arcgis/services/TIGERweb/State_County/MapServer/WMSServer", {
             layers: 'Counties', format: 'image/png', transparent: true, opacity: 0.5
@@ -380,20 +368,6 @@
                 L.circleMarker([pinLat2, pinLon2], { radius: 7, color: '#ffffff', fillColor: pinColor2, fillOpacity: 1, weight: 2.5 }).addTo(map);
             }
         });
-
-        // --- MANUALLY INJECT CINCINNATI TEXT LABEL IF WITHIN THE DAYTON REGION VIEW ---
-        if (radarCenterLat > 38.5 && radarCenterLat < 40.5 && radarCenterLon < -83.5 && radarCenterLon > -85.5) {
-            [radarMap, outlookMap].forEach(map => {
-                L.marker([39.1031, -84.5120], {
-                    icon: L.divIcon({
-                        className: 'custom-map-label',
-                        html: 'Cincinnati, OH',
-                        iconAnchor: [35, 5]
-                    }),
-                    interactive: false
-                }).addTo(map);
-            });
-        }
 
         const catUrl = "https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/SPC_wx_outlks/MapServer/1/query?where=1%3D1&outFields=*&f=geojson";
         fetch(catUrl).then(res => res.json()).then(data => {
@@ -417,13 +391,16 @@
         let warningLayer = null;
 
         function refreshLiveLayers() {
+            // Constantly refresh Day/Night tracking logic loop
             computeSolarTimes(pinLat, pinLon);
 
+            // 1. Refresh Radar Image
             if (radarLayer) { radarMap.removeLayer(radarLayer); }
             radarLayer = L.tileLayer.wms("https://opengeo.ncep.noaa.gov/geoserver/conus/conus_bref_qpe/wms?cache=" + Date.now(), {
                 layers: 'conus_bref_qpe', format: 'image/png', transparent: true, opacity: 0.55
             }).addTo(radarMap);
 
+            // 2. Fetch Warnings + Full Text Adhering to NWS Header Identification Policies
             fetch(`https://api.weather.gov/alerts/active?point=${pinLat},${pinLon}&cache=${Date.now()}`, { headers })
                 .then(res => res.json())
                 .then(data => {
@@ -452,6 +429,7 @@
                         boxElement.style.display = "none";
                     }
                 }).catch(() => {
+                    // Fail-safe fallback network code (Drops out cleanly to try next loop cycle without throwing visual box error)
                     console.log("NWS data connection packet re-route attempt active.");
                 });
         }
