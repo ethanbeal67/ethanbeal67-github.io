@@ -122,7 +122,7 @@
         .threat-wind { color: #2e7d32; }
         .threat-hail { color: #1565c0; }
 
-        /* Live Text Alert Impact Box Overlay */
+        /* Dynamic Pop-Up Weather Alert Box Overlay */
         .text-alert-overlay {
             position: absolute;
             top: 10px;
@@ -134,20 +134,17 @@
             padding: 10px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.2);
             z-index: 1000;
-            border-left: 5px solid #2e7d32; /* Green baseline when safe */
-            display: flex;
+            border-left: 5px solid #d32f2f;
+            display: none; /* Hidden completely by default when clean */
             flex-direction: column;
             box-sizing: border-box;
-        }
-        .text-alert-overlay.active-alert {
-            border-left: 5px solid #d32f2f; /* Red outline when alerts are live */
         }
         .alert-title {
             font-weight: bold;
             font-size: 0.9rem;
             margin-bottom: 4px;
             text-transform: uppercase;
-            color: #333;
+            color: #c62828;
         }
         .alert-desc {
             font-size: 0.78rem;
@@ -177,8 +174,8 @@
                 </div>
 
                 <div class="text-alert-overlay" id="alertBox">
-                    <div class="alert-title" id="alertBoxTitle">⚠️ Live Weather Alerts</div>
-                    <div class="alert-desc" id="alertBoxDesc">Checking local weather feeds...</div>
+                    <div class="alert-title" id="alertBoxTitle">🚨 Alert Active</div>
+                    <div class="alert-desc" id="alertBoxDesc">Loading alert context...</div>
                 </div>
             </div>
         </div>
@@ -218,6 +215,8 @@
             dragging: false, zoomControl: false, scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false, touchZoom: false
         };
 
+        const headers = { 'User-Agent': '(myfamilyweatherdashboard.com, contact@weather.com)' };
+
         // Initialize maps
         const radarMap = L.map('radarMap', { ...lockSettings, center: [radarCenterLat, radarCenterLon], zoom: radarZoom });
         L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(radarMap);
@@ -236,7 +235,6 @@
             }
         });
 
-        // Day 1 Categorical Outlook Colors
         const catUrl = "https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/SPC_wx_outlks/MapServer/1/query?where=1%3D1&outFields=*&f=geojson";
         fetch(catUrl).then(res => res.json()).then(data => {
             L.geoJSON(data, {
@@ -254,7 +252,7 @@
             }).addTo(outlookMap);
         });
 
-        // --- SILENT RADAR, WARNING POLYGONS, & TEXT ALERTS ENGINE (1 MINUTE REFRESH) ---
+        // --- SILENT BACKGROUND LIVE REFRESH ENGINE (EVERY 60 SECONDS) ---
         let radarLayer = null;
         let warningLayer = null;
 
@@ -265,8 +263,8 @@
                 layers: 'conus_bref_qpe', format: 'image/png', transparent: true, opacity: 0.55
             }).addTo(radarMap);
 
-            // 2. Fetch Warnings + Full Statement Impact Text Descriptions
-            fetch(`https://api.weather.gov/alerts/active?point=${pinLat},${pinLon}&cache=${Date.now()}`)
+            // 2. Fetch Warnings + Full Text Adhering to NWS Header Identification Policies
+            fetch(`https://api.weather.gov/alerts/active?point=${pinLat},${pinLon}&cache=${Date.now()}`, { headers })
                 .then(res => res.json())
                 .then(data => {
                     // Update Radar Map Polygons
@@ -282,36 +280,37 @@
                         }
                     }).addTo(radarMap);
 
-                    // Update the Text Alert Overlay Box
+                    // Handle Pop-up Alert Visibility Logic Dynamically
                     const boxElement = document.getElementById('alertBox');
                     const titleElement = document.getElementById('alertBoxTitle');
                     const descElement = document.getElementById('alertBoxDesc');
 
                     if (data.features && data.features.length > 0) {
-                        // Gather alerts, prioritizing severe events
                         let primaryAlert = data.features[0].properties;
                         
-                        boxElement.className = "text-alert-overlay active-alert";
+                        // Insert the element visually onto the layout grid
+                        boxElement.style.display = "flex";
                         titleElement.innerText = `🚨 ${primaryAlert.event}`;
                         
-                        // Parse description text for impacts/hazards or show overall overview safely
-                        let detailedText = primaryAlert.description || primaryAlert.headline || "No breakdown provided.";
+                        let detailedText = primaryAlert.description || primaryAlert.headline || "No hazard description provided.";
                         descElement.innerText = detailedText;
                     } else {
-                        // Standard clear view layout
-                        boxElement.className = "text-alert-overlay";
-                        titleElement.innerText = "✅ System Clear";
-                        descElement.innerText = "No active hazards, watches, statements, or warnings are currently active for this property.";
+                        // Completely drop the element from the display layout when system is clear
+                        boxElement.style.display = "none";
                     }
                 }).catch(() => {
-                    document.getElementById('alertBoxDesc').innerText = "Unable to reach NWS live data feed.";
+                    // Fail-safe handling if local wifi drops out momentarily
+                    const boxElement = document.getElementById('alertBox');
+                    boxElement.style.display = "flex";
+                    document.getElementById('alertBoxTitle').innerText = "⚠️ Connection Status";
+                    document.getElementById('alertBoxDesc').innerText = "Network data synchronization timeout.";
                 });
         }
 
         refreshLiveLayers();
-        setInterval(refreshLiveLayers, 60000); // Silent background fetch loop every 60 seconds
+        setInterval(refreshLiveLayers, 60000);
 
-        // --- SPC SEVERE CHANCES PROBABILITIES ---
+        // --- SPC CHANCES PROBABILITIES ---
         const threatLayers = [
             { id: 3, elementId: 'prob-tor', unit: '%' },
             { id: 5, elementId: 'prob-hail', unit: '%' },
@@ -334,8 +333,7 @@
             });
         });
 
-        // --- NWS COMPREHENSIVE TEXT FORECASTS ---
-        const headers = { 'User-Agent': '(myfamilyweatherdashboard.com, contact@weather.com)' };
+        // --- FORECAST RECONSTRUCTION PANELS ---
         fetch(`https://api.weather.gov/points/${pinLat},${pinLon}`, { headers })
             .then(res => res.json())
             .then(pointData => {
