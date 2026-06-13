@@ -12,8 +12,8 @@
         body {
             margin: 0;
             padding: 10px;
-            background-color: #121212;
-            color: #ffffff;
+            background-color: #f4f6f9;
+            color: #1a1a1a;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             height: 100vh;
             box-sizing: border-box;
@@ -31,29 +31,30 @@
         }
 
         .panel {
-            background-color: #1e1e1e;
+            background-color: #ffffff;
             border-radius: 8px;
             padding: 15px;
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            border: 1px solid #e1e4e8;
         }
 
         h2 {
             margin-top: 0;
             margin-bottom: 10px;
             font-size: 1.2rem;
-            color: #00adb5;
+            color: #005b60;
             text-transform: uppercase;
             letter-spacing: 1px;
-            border-bottom: 1px solid #333;
+            border-bottom: 2px solid #f0f2f5;
             padding-bottom: 5px;
         }
 
         .map-wrapper { padding: 0; position: relative; width: 100%; height: 100%; }
-        .map-instance { width: 100%; height: 100%; border-radius: 8px; }
+        .map-instance { width: 100%; height: 100%; border-radius: 8px; background-color: #e5e9f0; }
 
         /* Forecast lists layout */
         .forecast-list, .hourly-list {
@@ -75,15 +76,16 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: #252525;
+            background: #f8f9fa;
             padding: 8px 12px;
             border-radius: 6px;
+            border: 1px solid #edf0f2;
         }
 
         .forecast-day img { width: 40px; height: 40px; }
 
         .hourly-card {
-            background: #252525;
+            background: #f8f9fa;
             padding: 10px;
             border-radius: 6px;
             text-align: center;
@@ -92,32 +94,34 @@
             flex-direction: column;
             align-items: center;
             gap: 4px;
+            border: 1px solid #edf0f2;
         }
 
         .hourly-card img { width: 35px; height: 35px; }
 
-        .temp-high { color: #ff5722; font-weight: bold; }
-        .temp-low { color: #00bcd4; font-weight: bold; }
-        .pop { color: #2196f3; font-size: 0.85rem; }
+        .temp-high { color: #d9381e; font-weight: bold; }
+        .temp-low { color: #007a87; font-weight: bold; }
+        .pop { color: #1a73e8; font-size: 0.85rem; font-weight: bold; }
 
         /* Severe Threats Overlay */
         .severe-breakdown {
             position: absolute;
             bottom: 10px;
             left: 10px;
-            background: rgba(20, 20, 20, 0.85);
+            background: rgba(255, 255, 255, 0.92);
             padding: 10px;
             border-radius: 6px;
             font-size: 0.9rem;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
             z-index: 1000;
-            border: 1px solid #444;
+            border: 1px solid #ccc;
             pointer-events: none;
+            color: #222;
         }
         .threat-item { margin-bottom: 4px; font-weight: bold; }
-        .threat-tor { color: #ff5252; }
-        .threat-wind { color: #4caf50; }
-        .threat-hail { color: #2196f3; }
+        .threat-tor { color: #c62828; }
+        .threat-wind { color: #2e7d32; }
+        .threat-hail { color: #1565c0; }
     </style>
 </head>
 <body>
@@ -157,15 +161,16 @@
         // Extract parameters from URL
         const urlParams = new URLSearchParams(window.location.search);
 
-        // Required Pin 1 (Primary target location used for data lookups)
+        // Map Pins and Custom Color Formats
         const pinLat = parseFloat(urlParams.get('pinLat')) || 36.2230; 
-        const pinLon = parseFloat(urlParams.get('pinLon')) || -84.1120; // Default: West side of Norris Lake
+        const pinLon = parseFloat(urlParams.get('pinLon')) || -84.1120;
+        const pinColor = urlParams.get('pinColor') || '#00843D'; // Fallback: Notre Dame Green
 
-        // Optional Pin 2 (For multi-house views like Ohio)
         const pinLat2 = urlParams.get('pinLat2') ? parseFloat(urlParams.get('pinLat2')) : null;
         const pinLon2 = urlParams.get('pinLon2') ? parseFloat(urlParams.get('pinLon2')) : null;
+        const pinColor2 = urlParams.get('pinColor2') || '#0C2340'; // Fallback: Navy Blue
 
-        // Map Center Overrides (Letting you push the camera view further West)
+        // Map Center Positioning
         const radarCenterLat = parseFloat(urlParams.get('radarLat')) || 36.3000;
         const radarCenterLon = parseFloat(urlParams.get('radarLon')) || -84.4000; 
         const radarZoom = parseInt(urlParams.get('radarZoom')) || 8;
@@ -178,46 +183,51 @@
             dragging: false, zoomControl: false, scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false, touchZoom: false
         };
 
-        // --- MAP 1: LIVE RADAR MAP ---
+        // --- MAP 1: LIVE RADAR MAP (LIGHT MODE) ---
         const radarMap = L.map('radarMap', { ...lockSettings, center: [radarCenterLat, radarCenterLon], zoom: radarZoom });
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(radarMap);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(radarMap);
 
-        // Standard NWS Live Radar Layer (WMS Service)
-        L.tileLayer.wms("https://opengeo.ncep.noaa.gov/geoserver/conus/conus_bref_qpe/wms", {
-            layers: 'conus_bref_qpe', format: 'image/png', transparent: true, opacity: 0.6
+        // Add Active US County Lines to Radar Map
+        L.tileLayer.wms("https://maps.geocommunicator.gov/arcgis/services/StaticMaps/CountyBoundaries/MapServer/WMSServer", {
+            layers: '0', format: 'image/png', transparent: true, opacity: 0.4
         }).addTo(radarMap);
 
-        // Add pins to Radar Map
-        L.circleMarker([pinLat, pinLon], { radius: 6, color: '#ffffff', fillColor: '#ff5722', fillOpacity: 1, weight: 2 }).addTo(radarMap);
+        // Standard NWS Live Radar Layer
+        L.tileLayer.wms("https://opengeo.ncep.noaa.gov/geoserver/conus/conus_bref_qpe/wms", {
+            layers: 'conus_bref_qpe', format: 'image/png', transparent: true, opacity: 0.55
+        }).addTo(radarMap);
+
+        // Add Personalized Styled Pins to Radar Map
+        L.circleMarker([pinLat, pinLon], { radius: 7, color: '#ffffff', fillColor: pinColor, fillOpacity: 1, weight: 2.5 }).addTo(radarMap);
         if (pinLat2 && pinLon2) {
-            L.circleMarker([pinLat2, pinLon2], { radius: 6, color: '#ffffff', fillColor: '#e91e63', fillOpacity: 1, weight: 2 }).addTo(radarMap);
+            L.circleMarker([pinLat2, pinLon2], { radius: 7, color: '#ffffff', fillColor: pinColor2, fillOpacity: 1, weight: 2.5 }).addTo(radarMap);
         }
 
-        // Active Warning Polygons
+        // Active NWS Warning Polygons Layer
         fetch(`https://api.weather.gov/alerts/active?point=${pinLat},${pinLon}`)
             .then(res => res.json())
             .then(data => {
                 L.geoJSON(data, {
                     style: function(feature) {
                         const event = feature.properties.event;
-                        let color = "#ffeb3b";
-                        if (event.includes("Tornado")) color = "#e91e63";
-                        if (event.includes("Severe Thunderstorm")) color = "#ff5722";
-                        if (event.includes("Flash Flood")) color = "#00bcd4";
-                        return { color: color, weight: 3, fillOpacity: 0.15 };
+                        let color = "#e6b800";
+                        if (event.includes("Tornado")) color = "#d32f2f";
+                        if (event.includes("Severe Thunderstorm")) color = "#f57c00";
+                        if (event.includes("Flash Flood")) color = "#007b93";
+                        return { color: color, weight: 3, fillOpacity: 0.1 };
                     }
                 }).addTo(radarMap);
             });
 
 
-        // --- MAP 2: REGIONAL SPC OUTLOOK MAP ---
+        // --- MAP 2: SPC SEVERE OUTLOOK MAP (LIGHT MODE) ---
         const outlookMap = L.map('outlookMap', { ...lockSettings, center: [outlookCenterLat, outlookCenterLon], zoom: outlookZoom });
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(outlookMap);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(outlookMap);
 
-        // Add pins to Outlook Map
-        L.circleMarker([pinLat, pinLon], { radius: 6, color: '#ffffff', fillColor: '#00adb5', fillOpacity: 1, weight: 2 }).addTo(outlookMap);
+        // Add Personalized Styled Pins to Outlook Map (Using identical colors)
+        L.circleMarker([pinLat, pinLon], { radius: 7, color: '#ffffff', fillColor: pinColor, fillOpacity: 1, weight: 2.5 }).addTo(outlookMap);
         if (pinLat2 && pinLon2) {
-            L.circleMarker([pinLat2, pinLon2], { radius: 6, color: '#ffffff', fillColor: '#00adb5', fillOpacity: 1, weight: 2 }).addTo(outlookMap);
+            L.circleMarker([pinLat2, pinLon2], { radius: 7, color: '#ffffff', fillColor: pinColor2, fillOpacity: 1, weight: 2.5 }).addTo(outlookMap);
         }
 
         // Fetch Day 1 Categorical Outlook layer
@@ -227,13 +237,13 @@
                 style: function(feature) {
                     let color = "transparent";
                     const label = feature.properties.LABEL;
-                    if (label === "TSTM") color = "#c1e9c1";
-                    if (label === "MRGL") color = "#008b00";
-                    if (label === "SLGT") color = "#eeee00";
-                    if (label === "ENH")  color = "#ff7f00";
-                    if (label === "MDT")  color = "#ff0000";
-                    if (label === "HIGH") color = "#ff00ff";
-                    return { color: color, weight: 1.5, fillColor: color, fillOpacity: 0.25 };
+                    if (label === "TSTM") color = "#81c784";
+                    if (label === "MRGL") color = "#4caf50";
+                    if (label === "SLGT") color = "#fff176";
+                    if (label === "ENH")  color = "#ffb74d";
+                    if (label === "MDT")  color = "#e57373";
+                    if (label === "HIGH") color = "#f06292";
+                    return { color: color, weight: 1.5, fillColor: color, fillOpacity: 0.35 };
                 }
             }).addTo(outlookMap);
         });
@@ -262,7 +272,7 @@
         });
 
 
-        // --- NWS COMPREHENSIVE TEXT FORECASTS ---
+        // --- NWS FORECAST INGESTION PIPELINE ---
         const headers = { 'User-Agent': '(myfamilyweatherdashboard.com, contact@weather.com)' };
 
         fetch(`https://api.weather.gov/points/${pinLat},${pinLon}`, { headers })
@@ -271,7 +281,6 @@
                 const dailyUrl = pointData.properties.forecast;
                 const hourlyUrl = pointData.properties.forecastHourly;
 
-                // Daily Panel Builder
                 fetch(dailyUrl, { headers })
                     .then(res => res.json())
                     .then(fData => {
@@ -286,7 +295,7 @@
 
                             container.innerHTML += `
                                 <div class="forecast-day">
-                                    <div style="font-weight:bold; width:100px;">${day.name}</div>
+                                    <div style="font-weight:bold; width:100px; color:#333;">${day.name}</div>
                                     <img src="${day.icon.split(',')[0]}" alt="icon">
                                     <div class="pop">${pop > 0 ? '💧 ' + pop + '%' : ''}</div>
                                     <div>
@@ -298,7 +307,6 @@
                         }
                     });
 
-                // Hourly Panel Builder
                 fetch(hourlyUrl, { headers })
                     .then(res => res.json())
                     .then(hData => {
@@ -311,9 +319,9 @@
                             const pop = hour.probabilityOfPrecipitation?.value || 0;
                             container.innerHTML += `
                                 <div class="hourly-card">
-                                    <div style="font-size:0.85rem; color:#aaa;">${time}</div>
+                                    <div style="font-size:0.85rem; color:#666; font-weight:500;">${time}</div>
                                     <img src="${hour.icon.split(',')[0]}" alt="icon">
-                                    <div style="font-weight:bold; font-size:1.1rem;">${hour.temperature}°</div>
+                                    <div style="font-weight:bold; font-size:1.1rem; color:#222;">${hour.temperature}°</div>
                                     <div class="pop" style="font-size:0.75rem;">${pop > 0 ? pop + '%' : ''}</div>
                                 </div>
                             `;
