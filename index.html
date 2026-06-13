@@ -9,15 +9,43 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <style>
+        :root {
+            --bg-color: #f4f6f9;
+            --panel-bg: #ffffff;
+            --text-main: #1a1a1a;
+            --text-muted: #666666;
+            --border-color: #e1e4e8;
+            --panel-shadow: rgba(0,0,0,0.08);
+            --header-color: #005b60;
+            --card-bg: #f8f9fa;
+            --card-border: #edf0f2;
+            --temp-dark: #222222;
+        }
+
+        /* High-Contrast Midnight Theme Variables */
+        body.dark-theme {
+            --bg-color: #0f1115;
+            --panel-bg: #161920;
+            --text-main: #f0f3f6;
+            --text-muted: #959da5;
+            --border-color: #2f363d;
+            --panel-shadow: rgba(0,0,0,0.4);
+            --header-color: #39adb5;
+            --card-bg: #1f242c;
+            --card-border: #21262d;
+            --temp-dark: #ffffff;
+        }
+
         body {
             margin: 0;
             padding: 10px;
-            background-color: #f4f6f9;
-            color: #1a1a1a;
+            background-color: var(--bg-color);
+            color: var(--text-main);
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             height: 100vh;
             box-sizing: border-box;
             overflow: hidden;
+            transition: background-color 0.5s ease;
         }
 
         .dashboard {
@@ -30,26 +58,27 @@
         }
 
         .panel {
-            background-color: #ffffff;
+            background-color: var(--panel-bg);
             border-radius: 8px;
             padding: 12px;
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-            border: 1px solid #e1e4e8;
+            box-shadow: 0 4px 12px var(--panel-shadow);
+            border: 1px solid var(--border-color);
             position: relative;
+            transition: background-color 0.5s ease, border-color 0.5s ease;
         }
 
         h2 {
             margin-top: 0;
             margin-bottom: 8px;
             font-size: 1.1rem;
-            color: #005b60;
+            color: var(--header-color);
             text-transform: uppercase;
             letter-spacing: 1px;
-            border-bottom: 2px solid #f0f2f5;
+            border-bottom: 2px solid var(--card-border);
             padding-bottom: 4px;
         }
 
@@ -74,16 +103,16 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: #f8f9fa;
+            background: var(--card-bg);
             padding: 6px 12px;
             border-radius: 6px;
-            border: 1px solid #edf0f2;
+            border: 1px solid var(--card-border);
         }
 
-        .forecast-day img { width: 35px; height: 35px; }
+        .forecast-day img { width: 35px; height: 35px; border-radius: 4px; }
 
         .hourly-card {
-            background: #f8f9fa;
+            background: var(--card-bg);
             padding: 8px;
             border-radius: 6px;
             text-align: center;
@@ -92,35 +121,58 @@
             flex-direction: column;
             align-items: center;
             gap: 2px;
-            border: 1px solid #edf0f2;
+            border: 1px solid var(--card-border);
             overflow: hidden;
         }
 
-        .hourly-card img { width: 30px; height: 30px; }
+        .hourly-card img { width: 30px; height: 30px; border-radius: 4px; }
 
         .temp-high { color: #d9381e; font-weight: bold; }
         .temp-low { color: #007a87; font-weight: bold; }
         .pop { color: #1a73e8; font-size: 0.8rem; font-weight: bold; }
+        body.dark-theme .pop { color: #58a6ff; }
 
-        /* SPC Probabilities Overlay Box */
+        /* SPC Overlay Box */
         .severe-breakdown {
             position: absolute;
             bottom: 10px;
             left: 10px;
-            background: rgba(255, 255, 255, 0.94);
+            background: var(--panel-bg);
             padding: 8px 12px;
             border-radius: 6px;
             font-size: 0.85rem;
             box-shadow: 0 4px 10px rgba(0,0,0,0.15);
             z-index: 1000;
-            border: 1px solid #ccc;
+            border: 1px solid var(--border-color);
             pointer-events: none;
-            color: #222;
+            color: var(--text-main);
         }
         .threat-item { margin-bottom: 2px; font-weight: bold; }
         .threat-tor { color: #c62828; }
         .threat-wind { color: #2e7d32; }
         .threat-hail { color: #1565c0; }
+        body.dark-theme .threat-tor { color: #ff6b6b; }
+        body.dark-theme .threat-wind { color: #4caf50; }
+        body.dark-theme .threat-hail { color: #58a6ff; }
+
+        /* Sun Track Box Style */
+        .astro-panel {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: var(--panel-bg);
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+            z-index: 1000;
+            border: 1px solid var(--border-color);
+            pointer-events: none;
+            color: var(--text-main);
+            display: flex;
+            gap: 10px;
+        }
 
         /* Dynamic Pop-Up Weather Alert Box Overlay */
         .text-alert-overlay {
@@ -129,15 +181,16 @@
             right: 10px;
             width: 45%;
             max-height: 85%;
-            background: rgba(255, 255, 255, 0.96);
+            background: var(--panel-bg);
             border-radius: 6px;
             padding: 10px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 1001;
             border-left: 5px solid #d32f2f;
-            display: none; /* Hidden completely by default when clean */
+            display: none;
             flex-direction: column;
             box-sizing: border-box;
+            color: var(--text-main);
         }
         .alert-title {
             font-weight: bold;
@@ -146,9 +199,10 @@
             text-transform: uppercase;
             color: #c62828;
         }
+        body.dark-theme .alert-title { color: #ff6b6b; }
         .alert-desc {
             font-size: 0.78rem;
-            color: #444;
+            color: var(--text-main);
             line-height: 1.2;
             overflow-y: auto;
             white-space: pre-line;
@@ -171,6 +225,11 @@
                     <div class="threat-item threat-tor">🌪️ Tornado: <span id="prob-tor">0%</span></div>
                     <div class="threat-item threat-wind">💨 Wind: <span id="prob-wind">0%</span></div>
                     <div class="threat-item threat-hail">💥 Hail: <span id="prob-hail">0%</span></div>
+                </div>
+
+                <div class="astro-panel" id="astroBox">
+                    <span>🌅 Sunrise: <span id="sun-rise">--:--</span></span>
+                    <span>🌇 Sunset: <span id="sun-set">--:--</span></span>
                 </div>
 
                 <div class="text-alert-overlay" id="alertBox">
@@ -217,9 +276,84 @@
 
         const headers = { 'User-Agent': '(myfamilyweatherdashboard.com, contact@weather.com)' };
 
+        // --- EPHEMERIS ASTRO LOGIC (SUNRISE/SUNSET GENERATOR & AUTO DARK THEME) ---
+        function computeSolarTimes(lat, lon) {
+            const now = new Date();
+            const start = new Date(now.getFullYear(), 0, 0);
+            const diff = now - start;
+            const oneDay = 1000 * 60 * 60 * 24;
+            const dayOfYear = Math.floor(diff / oneDay);
+
+            // Approximating zenith calculations for daylight tracking
+            const lngHour = lon / 15;
+            const tRise = dayOfYear + ((6 - lngHour) / 24);
+            const tSet = dayOfYear + ((18 - lngHour) / 24);
+
+            const M_rise = (0.9856 * tRise) - 3.289;
+            const M_set = (0.9856 * tSet) - 3.289;
+
+            const L_rise = M_rise + (1.916 * Math.sin(M_rise * Math.PI / 180)) + (0.020 * Math.sin(2 * M_rise * Math.PI / 180)) + 282.634;
+            const L_set = M_set + (1.916 * Math.sin(M_set * Math.PI / 180)) + (0.020 * Math.sin(2 * M_set * Math.PI / 180)) + 282.634;
+
+            let RA_rise = Math.atan(0.91746 * Math.tan(L_rise * Math.PI / 180)) * 180 / Math.PI;
+            let RA_set = Math.atan(0.91746 * Math.tan(L_set * Math.PI / 180)) * 180 / Math.PI;
+
+            RA_rise = (RA_rise + 360) % 360;
+            RA_set = (RA_set + 360) % 360;
+
+            RA_rise = RA_rise / 15;
+            RA_set = RA_set / 15;
+
+            const sinDec_rise = 0.39782 * Math.sin(L_rise * Math.PI / 180);
+            const sinDec_set = 0.39782 * Math.sin(L_set * Math.PI / 180);
+            const cosDec_rise = Math.cos(Math.asin(sinDec_rise));
+            const cosDec_set = Math.cos(Math.asin(sinDec_set));
+
+            const cosH_rise = (Math.cos(90.833 * Math.PI / 180) - (sinDec_rise * Math.sin(lat * Math.PI / 180))) / (cosDec_rise * Math.cos(lat * Math.PI / 180));
+            const cosH_set = (Math.cos(90.833 * Math.PI / 180) - (sinDec_set * Math.sin(lat * Math.PI / 180))) / (cosDec_set * Math.cos(lat * Math.PI / 180));
+
+            const H_rise = 360 - Math.acos(cosH_rise) * 180 / Math.PI;
+            const H_set = Math.acos(cosH_set) * 180 / Math.PI;
+
+            const T_rise = H_rise / 15;
+            const T_set = H_set / 15;
+
+            const UT_rise = T_rise + RA_rise - (0.06571 * tRise) - 6.622 - lngHour;
+            const UT_set = T_set + RA_set - (0.06571 * tSet) - 6.622 - lngHour;
+
+            // Handle UTC wrapping limits
+            const localRiseHours = (UT_rise + 24 + (now.getTimezoneOffset() / -60)) % 24;
+            const localSetHours = (UT_set + 24 + (now.getTimezoneOffset() / -60)) % 24;
+
+            const parseClockStr = (decimalHours) => {
+                const h = Math.floor(decimalHours);
+                const m = Math.floor((decimalHours - h) * 60);
+                const ampm = h >= 12 ? 'PM' : 'AM';
+                const displayH = h % 12 === 0 ? 12 : h % 12;
+                return `${displayH}:${m < 10 ? '0' + m : m} ${ampm}`;
+            };
+
+            const riseStr = parseClockStr(localRiseHours);
+            const setStr = parseClockStr(localSetHours);
+
+            document.getElementById('sun-rise').innerText = riseStr;
+            document.getElementById('sun-set').innerText = setStr;
+
+            // Evaluate Dark Mode State Rule
+            const currentDecimalTime = now.getHours() + (now.getMinutes() / 60);
+            if (currentDecimalTime < localRiseHours || currentDecimalTime > localSetHours) {
+                document.body.classList.add('dark-theme');
+            } else {
+                document.body.classList.remove('dark-theme');
+            }
+        }
+
+        // Run theme/sun evaluation instantly on coordinate footprint
+        computeSolarTimes(pinLat, pinLon);
+
         // Initialize maps
         const radarMap = L.map('radarMap', { ...lockSettings, center: [radarCenterLat, radarCenterLon], zoom: radarZoom });
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(radarMap);
+        const lightBasemap = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(radarMap);
 
         L.tileLayer.wms("https://tigerweb.geo.census.gov/arcgis/services/TIGERweb/State_County/MapServer/WMSServer", {
             layers: 'Counties', format: 'image/png', transparent: true, opacity: 0.5
@@ -257,6 +391,9 @@
         let warningLayer = null;
 
         function refreshLiveLayers() {
+            // Constantly refresh Day/Night tracking logic loop
+            computeSolarTimes(pinLat, pinLon);
+
             // 1. Refresh Radar Image
             if (radarLayer) { radarMap.removeLayer(radarLayer); }
             radarLayer = L.tileLayer.wms("https://opengeo.ncep.noaa.gov/geoserver/conus/conus_bref_qpe/wms?cache=" + Date.now(), {
@@ -267,7 +404,6 @@
             fetch(`https://api.weather.gov/alerts/active?point=${pinLat},${pinLon}&cache=${Date.now()}`, { headers })
                 .then(res => res.json())
                 .then(data => {
-                    // Update Radar Map Polygons
                     if (warningLayer) { radarMap.removeLayer(warningLayer); }
                     warningLayer = L.geoJSON(data, {
                         style: function(feature) {
@@ -280,30 +416,21 @@
                         }
                     }).addTo(radarMap);
 
-                    // Handle Pop-up Alert Visibility Logic Dynamically
                     const boxElement = document.getElementById('alertBox');
                     const titleElement = document.getElementById('alertBoxTitle');
                     const descElement = document.getElementById('alertBoxDesc');
 
                     if (data.features && data.features.length > 0) {
                         let primaryAlert = data.features[0].properties;
-                        
-                        // Insert the element visually onto the layout grid
                         boxElement.style.display = "flex";
                         titleElement.innerText = `🚨 ${primaryAlert.event}`;
-                        
-                        let detailedText = primaryAlert.description || primaryAlert.headline || "No hazard description provided.";
-                        descElement.innerText = detailedText;
+                        descElement.innerText = primaryAlert.description || primaryAlert.headline || "No hazard description provided.";
                     } else {
-                        // Completely drop the element from the display layout when system is clear
                         boxElement.style.display = "none";
                     }
                 }).catch(() => {
-                    // Fail-safe handling if local wifi drops out momentarily
-                    const boxElement = document.getElementById('alertBox');
-                    boxElement.style.display = "flex";
-                    document.getElementById('alertBoxTitle').innerText = "⚠️ Connection Status";
-                    document.getElementById('alertBoxDesc').innerText = "Network data synchronization timeout.";
+                    // Fail-safe fallback network code (Drops out cleanly to try next loop cycle without throwing visual box error)
+                    console.log("NWS data connection packet re-route attempt active.");
                 });
         }
 
@@ -355,9 +482,9 @@
                             const pop = day.probabilityOfPrecipitation?.value || 0;
                             container.innerHTML += `
                                 <div class="forecast-day">
-                                    <div style="font-weight:bold; width:110px; color:#333;">${day.name}</div>
+                                    <div style="font-weight:bold; width:110px; color:var(--text-main);">${day.name}</div>
                                     <img src="${day.icon.split(',')[0]}" alt="icon">
-                                    <div class="pop">${pop > 0 ? '💧 ' + pop + '%' : ''}</div>
+                                    <div class="pop">💧 ${pop}%</div>
                                     <div style="width: 70px; text-align: right;">
                                         <span class="temp-high">${day.temperature}°</span>
                                     </div>
@@ -378,10 +505,10 @@
                             const pop = hour.probabilityOfPrecipitation?.value || 0;
                             container.innerHTML += `
                                 <div class="hourly-card">
-                                    <div style="font-size:0.8rem; color:#666; font-weight:500;">${time}</div>
+                                    <div style="font-size:0.8rem; color:var(--text-muted); font-weight:500;">${time}</div>
                                     <img src="${hour.icon.split(',')[0]}" alt="icon">
-                                    <div style="font-weight:bold; font-size:1rem; color:#222;">${hour.temperature}°</div>
-                                    <div class="pop">${pop > 0 ? pop + '%' : ''}</div>
+                                    <div style="font-weight:bold; font-size:1rem; color:var(--temp-dark);">${hour.temperature}°</div>
+                                    <div class="pop">💧 ${pop}%</div>
                                 </div>
                             `;
                         });
