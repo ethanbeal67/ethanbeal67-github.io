@@ -167,11 +167,11 @@
 
         // Map Center Overrides (Letting you push the camera view further West)
         const radarCenterLat = parseFloat(urlParams.get('radarLat')) || 36.3000;
-        const radarCenterLon = parseFloat(urlParams.get('radarLon')) || -84.4000; // Shifted west
+        const radarCenterLon = parseFloat(urlParams.get('radarLon')) || -84.4000; 
         const radarZoom = parseInt(urlParams.get('radarZoom')) || 8;
 
         const outlookCenterLat = parseFloat(urlParams.get('outlookLat')) || 36.3200;
-        const outlookCenterLon = parseFloat(urlParams.get('outlookLon')) || -83.9500; // Centers the whole lake
+        const outlookCenterLon = parseFloat(urlParams.get('outlookLon')) || -83.9500; 
         const outlookZoom = parseInt(urlParams.get('outlookZoom')) || 9;
 
         const lockSettings = {
@@ -179,7 +179,7 @@
         };
 
         // --- MAP 1: LIVE RADAR MAP ---
-        const radarMap = L.map('radarMap', { ...lockSettings, center: [radarCenterLat, radarCenterLon], zoom: radarCenterZoom });
+        const radarMap = L.map('radarMap', { ...lockSettings, center: [radarCenterLat, radarCenterLon], zoom: radarZoom });
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(radarMap);
 
         // Standard NWS Live Radar Layer (WMS Service)
