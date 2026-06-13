@@ -52,10 +52,10 @@
             padding-bottom: 5px;
         }
 
-        #map-panel { padding: 0; position: relative; }
-        #map { width: 100%; height: 100%; border-radius: 8px; }
+        .map-wrapper { padding: 0; position: relative; width: 100%; height: 100%; }
+        .map-instance { width: 100%; height: 100%; border-radius: 8px; }
 
-        /* Scrollable forecast containers */
+        /* Forecast lists layout */
         .forecast-list, .hourly-list {
             display: flex;
             flex-direction: column;
@@ -64,7 +64,6 @@
             flex-grow: 1;
         }
 
-        /* Horizontal layout for hourly forecasts */
         .hourly-list {
             flex-direction: row;
             overflow-x: auto;
@@ -101,39 +100,45 @@
         .temp-low { color: #00bcd4; font-weight: bold; }
         .pop { color: #2196f3; font-size: 0.85rem; }
 
-        /* Severe Risks Text Section */
-        #outlook-text {
-            font-size: 1.1rem;
-            line-height: 1.4;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            height: 100%;
-            text-align: center;
+        /* Precise Severe Threats Overlay */
+        .severe-breakdown {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(20, 20, 20, 0.85);
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+            z-index: 1000;
+            border: 1px solid #444;
+            pointer-events: none;
         }
-        
-        .risk-badge {
-            font-size: 1.8rem;
-            font-weight: bold;
-            padding: 10px 20px;
-            border-radius: 8px;
-            margin-top: 10px;
-            text-shadow: 1px 1px 2px black;
-        }
+        .threat-item { margin-bottom: 4px; font-weight: bold; }
+        .threat-tor { color: #ff5252; }
+        .threat-wind { color: #4caf50; }
+        .threat-hail { color: #2196f3; }
     </style>
 </head>
 <body>
 
     <div class="dashboard">
         
-        <div class="panel id="map-panel"">
-            <div id="map"></div>
+        <div class="panel" style="padding:0;">
+            <div class="map-wrapper">
+                <div id="radarMap" class="map-instance"></div>
+            </div>
         </div>
 
-        <div class="panel">
-            <h2>Severe Weather Outlook</h2>
-            <div id="outlook-text">Loading SPC Convective Outlook Data...</div>
+        <div class="panel" style="padding:0;">
+            <div class="map-wrapper">
+                <div id="outlookMap" class="map-instance"></div>
+                <div class="severe-breakdown" id="breakdownBox">
+                    <div class="threat-item threat-tor">🌪️ Tornado: <span id="prob-tor">0%</span></div>
+                    <div class="threat-item threat-wind">💨 Damaging Wind: <span id="prob-wind">0%</span></div>
+                    <div class="threat-item threat-hail">💥 Large Hail: <span id="prob-hail">0%</span></div>
+                </div>
+            </div>
         </div>
 
         <div class="panel">
@@ -155,42 +160,93 @@
         const lon = parseFloat(urlParams.get('lon')) || -97.5164;
         const zoom = parseInt(urlParams.get('zoom')) || 8;
 
-        // --- 1. SET UP MAP (RADAR & ALERTS) ---
-        const map = L.map('map', {
+        const mapOptions = {
             center: [lat, lon],
             zoom: zoom,
             dragging: false, zoomControl: false, scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false, touchZoom: false
-        });
+        };
 
-        // Dark background layer
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+        // --- MAP 1: LIVE RADAR & ALERTS MAP ---
+        const radarMap = L.map('radarMap', mapOptions);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(radarMap);
 
         // Standard NWS Live Radar Layer (WMS Service)
         L.tileLayer.wms("https://opengeo.ncep.noaa.gov/geoserver/conus/conus_bref_qpe/wms", {
-            layers: 'conus_bref_qpe',
-            format: 'image/png',
-            transparent: true,
-            opacity: 0.6
-        }).addTo(map);
+            layers: 'conus_bref_qpe', format: 'image/png', transparent: true, opacity: 0.6
+        }).addTo(radarMap);
 
-        // Real-time local NWS Active Warnings Polygons
+        // Real-time local active warning polygons (Tornado/Severe T-Storm/Flash Flood)
         fetch(`https://api.weather.gov/alerts/active?point=${lat},${lon}`)
             .then(res => res.json())
             .then(data => {
                 L.geoJSON(data, {
                     style: function(feature) {
                         const event = feature.properties.event;
-                        let color = "#ffeb3b"; // Default Advisory color
+                        let color = "#ffeb3b";
                         if (event.includes("Tornado")) color = "#e91e63";
                         if (event.includes("Severe Thunderstorm")) color = "#ff5722";
                         if (event.includes("Flash Flood")) color = "#00bcd4";
                         return { color: color, weight: 3, fillOpacity: 0.15 };
                     }
-                }).addTo(map);
+                }).addTo(radarMap);
             });
 
-        // --- 2. FETCH NWS FORECAST DATA ---
-        // NWS APIs require a descriptive User-Agent header (part of their rules)
+
+        // --- MAP 2: REGIONAL SPC OUTLOOK MAP ---
+        // Slightly lower zoom level helps provide context for the wider regional outlook shapes
+        const outlookMap = L.map('outlookMap', { ...mapOptions, zoom: Math.max(zoom - 1, 6) });
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(outlookMap);
+
+        // Visual pin marking your family's precise location on the outlook map
+        L.circleMarker([lat, lon], { radius: 6, color: '#ffffff', fillColor: '#00adb5', fillOpacity: 1, weight: 2 }).addTo(outlookMap);
+
+        // Color mapper for categorical shapes
+        function getOutlookStyle(label) {
+            let color = "transparent";
+            if (label === "TSTM") color = "#c1e9c1";
+            if (label === "MRGL") color = "#008b00";
+            if (label === "SLGT") color = "#eeee00";
+            if (label === "ENH")  color = "#ff7f00";
+            if (label === "MDT")  color = "#ff0000";
+            if (label === "HIGH") color = "#ff00ff";
+            return { color: color, weight: 1.5, fillColor: color, fillOpacity: 0.25 };
+        }
+
+        // Fetch and draw Day 1 Categorical Outlook layer
+        const catUrl = "https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/SPC_wx_outlks/MapServer/1/query?where=1%3D1&outFields=*&f=geojson";
+        fetch(catUrl).then(res => res.json()).then(data => {
+            L.geoJSON(data, {
+                style: function(feature) { return getOutlookStyle(feature.properties.LABEL); }
+            }).addTo(outlookMap);
+        });
+
+        // Query point locations across individual NWS hazard probability maps
+        // Layer 3 = Tornado, Layer 5 = Hail, Layer 7 = Wind
+        const threatLayers = [
+            { id: 3, elementId: 'prob-tor', unit: '% chance' },
+            { id: 5, elementId: 'prob-hail', unit: '% chance' },
+            { id: 7, elementId: 'prob-wind', unit: '% chance' }
+        ];
+
+        threatLayers.forEach(layer => {
+            const url = `https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/SPC_wx_outlks/MapServer/${layer.id}/query?geometry=${lon},${lat}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=*&f=geojson`;
+            fetch(url).then(res => res.json()).then(data => {
+                if (data.features && data.features.length > 0) {
+                    // Extract highest matched probability polygon layer for the target location
+                    let maxProb = 0;
+                    data.features.forEach(f => {
+                        const probVal = parseInt(f.properties.LABEL);
+                        if (!isNaN(probVal) && probVal > maxProb) maxProb = probVal;
+                    });
+                    document.getElementById(layer.elementId).innerText = maxProb > 0 ? maxProb + layer.unit : "Low / None";
+                }
+            }).catch(() => {
+                document.getElementById(layer.elementId).innerText = "Fetch Error";
+            });
+        });
+
+
+        // --- NWS COMPREHENSIVE TEXT METRICS SYSTEM ---
         const headers = { 'User-Agent': '(myfamilyweatherdashboard.com, contact@weather.com)' };
 
         fetch(`https://api.weather.gov/points/${lat},${lon}`, { headers })
@@ -199,7 +255,7 @@
                 const dailyUrl = pointData.properties.forecast;
                 const hourlyUrl = pointData.properties.forecastHourly;
 
-                // Build 5-Day Forecast Panel
+                // Build 5-Day Forecast Grid Box
                 fetch(dailyUrl, { headers })
                     .then(res => res.json())
                     .then(fData => {
@@ -207,7 +263,6 @@
                         container.innerHTML = '';
                         const periods = fData.properties.periods;
                         
-                        // Grab only daytime frames (stride by 2 to skip nights)
                         for (let i = 0; i < periods.length && i < 10; i += 2) {
                             const day = periods[i];
                             const night = periods[i+1] || { temperature: 'N/A' };
@@ -227,13 +282,13 @@
                         }
                     });
 
-                // Build Hourly Forecast Panel
+                // Build 12-Hour Hourly Ticker
                 fetch(hourlyUrl, { headers })
                     .then(res => res.json())
                     .then(hData => {
                         const container = document.getElementById('hourly-forecast');
                         container.innerHTML = '';
-                        const hours = hData.properties.periods.slice(0, 12); // Next 12 hours
+                        const hours = hData.properties.periods.slice(0, 12);
 
                         hours.forEach(hour => {
                             const time = new Date(hour.startTime).toLocaleTimeString([], { hour: 'numeric' });
@@ -250,40 +305,7 @@
                     });
             });
 
-        // --- 3. SPC SEVERE WEATHER OUTLOOK ---
-        const spcUrl = "https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/SPC_wx_outlks/MapServer/1/query?where=1%3D1&outFields=*&f=geojson";
-        fetch(spcUrl)
-            .then(res => res.json())
-            .then(data => {
-                const outlookText = document.getElementById('outlook-text');
-                
-                // Leaflet technique to check which NWS convective zone contains our family coordinates
-                let localRisk = "GENERAL THUNDERSTORMS / NO RISK";
-                let badgeColor = "#2e7d32";
-
-                L.geoJSON(data, {
-                    onEachFeature: function(feature, layer) {
-                        // Check if current coordinate is inside polygon
-                        if (layer.getBounds().contains([lat, lon])) {
-                            const label = feature.properties.LABEL;
-                            if (label === "MRGL") { localRisk = "MARGINAL RISK (1/5)"; badgeColor = "#008b00"; }
-                            if (label === "SLGT") { localRisk = "SLIGHT RISK (2/5)"; badgeColor = "#eeee00"; color="#000";}
-                            if (label === "ENH")  { localRisk = "ENHANCED RISK (3/5)"; badgeColor = "#ff7f00"; }
-                            if (label === "MDT")  { localRisk = "MODERATE RISK (4/5)"; badgeColor = "#ff0000"; }
-                            if (label === "HIGH") { localRisk = "HIGH RISK (5/5)"; badgeColor = "#ff00ff"; }
-                        }
-                    }
-                });
-
-                // Style based on text risk color requirements
-                const textStyle = (localRisk.includes("SLIGHT")) ? "color:#000" : "color:#fff";
-                outlookText.innerHTML = `
-                    <div>Storm Prediction Center Day 1 Forecast for this location:</div>
-                    <div class="risk-badge" style="background-color:${badgeColor}; ${textStyle}">${localRisk}</div>
-                `;
-            });
-
-        // Global refresh: pull down brand new values every 15 minutes
+        // Global dashboard refresh sequencer: 15 minutes
         setTimeout(() => { window.location.reload(); }, 15 * 60 * 1000);
     </script>
 </body>
