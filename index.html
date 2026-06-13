@@ -100,7 +100,7 @@
         .temp-low { color: #00bcd4; font-weight: bold; }
         .pop { color: #2196f3; font-size: 0.85rem; }
 
-        /* Precise Severe Threats Overlay */
+        /* Severe Threats Overlay */
         .severe-breakdown {
             position: absolute;
             bottom: 10px;
@@ -154,20 +154,32 @@
     </div>
 
     <script>
-        // Grab custom parameters from URL (?lat=XX&lon=XX)
+        // Extract parameters from URL
         const urlParams = new URLSearchParams(window.location.search);
-        const lat = parseFloat(urlParams.get('lat')) || 35.4676; // Defaults to OKC
-        const lon = parseFloat(urlParams.get('lon')) || -97.5164;
-        const zoom = parseInt(urlParams.get('zoom')) || 8;
 
-        const mapOptions = {
-            center: [lat, lon],
-            zoom: zoom,
+        // Required Pin 1 (Primary target location used for data lookups)
+        const pinLat = parseFloat(urlParams.get('pinLat')) || 36.2230; 
+        const pinLon = parseFloat(urlParams.get('pinLon')) || -84.1120; // Default: West side of Norris Lake
+
+        // Optional Pin 2 (For multi-house views like Ohio)
+        const pinLat2 = urlParams.get('pinLat2') ? parseFloat(urlParams.get('pinLat2')) : null;
+        const pinLon2 = urlParams.get('pinLon2') ? parseFloat(urlParams.get('pinLon2')) : null;
+
+        // Map Center Overrides (Letting you push the camera view further West)
+        const radarCenterLat = parseFloat(urlParams.get('radarLat')) || 36.3000;
+        const radarCenterLon = parseFloat(urlParams.get('radarLon')) || -84.4000; // Shifted west
+        const radarZoom = parseInt(urlParams.get('radarZoom')) || 8;
+
+        const outlookCenterLat = parseFloat(urlParams.get('outlookLat')) || 36.3200;
+        const outlookCenterLon = parseFloat(urlParams.get('outlookLon')) || -83.9500; // Centers the whole lake
+        const outlookZoom = parseInt(urlParams.get('outlookZoom')) || 9;
+
+        const lockSettings = {
             dragging: false, zoomControl: false, scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false, touchZoom: false
         };
 
-        // --- MAP 1: LIVE RADAR & ALERTS MAP ---
-        const radarMap = L.map('radarMap', mapOptions);
+        // --- MAP 1: LIVE RADAR MAP ---
+        const radarMap = L.map('radarMap', { ...lockSettings, center: [radarCenterLat, radarCenterLon], zoom: radarCenterZoom });
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(radarMap);
 
         // Standard NWS Live Radar Layer (WMS Service)
@@ -175,8 +187,14 @@
             layers: 'conus_bref_qpe', format: 'image/png', transparent: true, opacity: 0.6
         }).addTo(radarMap);
 
-        // Real-time local active warning polygons (Tornado/Severe T-Storm/Flash Flood)
-        fetch(`https://api.weather.gov/alerts/active?point=${lat},${lon}`)
+        // Add pins to Radar Map
+        L.circleMarker([pinLat, pinLon], { radius: 6, color: '#ffffff', fillColor: '#ff5722', fillOpacity: 1, weight: 2 }).addTo(radarMap);
+        if (pinLat2 && pinLon2) {
+            L.circleMarker([pinLat2, pinLon2], { radius: 6, color: '#ffffff', fillColor: '#e91e63', fillOpacity: 1, weight: 2 }).addTo(radarMap);
+        }
+
+        // Active Warning Polygons
+        fetch(`https://api.weather.gov/alerts/active?point=${pinLat},${pinLon}`)
             .then(res => res.json())
             .then(data => {
                 L.geoJSON(data, {
@@ -193,35 +211,34 @@
 
 
         // --- MAP 2: REGIONAL SPC OUTLOOK MAP ---
-        // Slightly lower zoom level helps provide context for the wider regional outlook shapes
-        const outlookMap = L.map('outlookMap', { ...mapOptions, zoom: Math.max(zoom - 1, 6) });
+        const outlookMap = L.map('outlookMap', { ...lockSettings, center: [outlookCenterLat, outlookCenterLon], zoom: outlookZoom });
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(outlookMap);
 
-        // Visual pin marking your family's precise location on the outlook map
-        L.circleMarker([lat, lon], { radius: 6, color: '#ffffff', fillColor: '#00adb5', fillOpacity: 1, weight: 2 }).addTo(outlookMap);
-
-        // Color mapper for categorical shapes
-        function getOutlookStyle(label) {
-            let color = "transparent";
-            if (label === "TSTM") color = "#c1e9c1";
-            if (label === "MRGL") color = "#008b00";
-            if (label === "SLGT") color = "#eeee00";
-            if (label === "ENH")  color = "#ff7f00";
-            if (label === "MDT")  color = "#ff0000";
-            if (label === "HIGH") color = "#ff00ff";
-            return { color: color, weight: 1.5, fillColor: color, fillOpacity: 0.25 };
+        // Add pins to Outlook Map
+        L.circleMarker([pinLat, pinLon], { radius: 6, color: '#ffffff', fillColor: '#00adb5', fillOpacity: 1, weight: 2 }).addTo(outlookMap);
+        if (pinLat2 && pinLon2) {
+            L.circleMarker([pinLat2, pinLon2], { radius: 6, color: '#ffffff', fillColor: '#00adb5', fillOpacity: 1, weight: 2 }).addTo(outlookMap);
         }
 
-        // Fetch and draw Day 1 Categorical Outlook layer
+        // Fetch Day 1 Categorical Outlook layer
         const catUrl = "https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/SPC_wx_outlks/MapServer/1/query?where=1%3D1&outFields=*&f=geojson";
         fetch(catUrl).then(res => res.json()).then(data => {
             L.geoJSON(data, {
-                style: function(feature) { return getOutlookStyle(feature.properties.LABEL); }
+                style: function(feature) {
+                    let color = "transparent";
+                    const label = feature.properties.LABEL;
+                    if (label === "TSTM") color = "#c1e9c1";
+                    if (label === "MRGL") color = "#008b00";
+                    if (label === "SLGT") color = "#eeee00";
+                    if (label === "ENH")  color = "#ff7f00";
+                    if (label === "MDT")  color = "#ff0000";
+                    if (label === "HIGH") color = "#ff00ff";
+                    return { color: color, weight: 1.5, fillColor: color, fillOpacity: 0.25 };
+                }
             }).addTo(outlookMap);
         });
 
-        // Query point locations across individual NWS hazard probability maps
-        // Layer 3 = Tornado, Layer 5 = Hail, Layer 7 = Wind
+        // Query Point Probabilities (Tornado = 3, Hail = 5, Wind = 7)
         const threatLayers = [
             { id: 3, elementId: 'prob-tor', unit: '% chance' },
             { id: 5, elementId: 'prob-hail', unit: '% chance' },
@@ -229,10 +246,9 @@
         ];
 
         threatLayers.forEach(layer => {
-            const url = `https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/SPC_wx_outlks/MapServer/${layer.id}/query?geometry=${lon},${lat}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=*&f=geojson`;
+            const url = `https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/SPC_wx_outlks/MapServer/${layer.id}/query?geometry=${pinLon},${pinLat}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=*&f=geojson`;
             fetch(url).then(res => res.json()).then(data => {
                 if (data.features && data.features.length > 0) {
-                    // Extract highest matched probability polygon layer for the target location
                     let maxProb = 0;
                     data.features.forEach(f => {
                         const probVal = parseInt(f.properties.LABEL);
@@ -241,21 +257,21 @@
                     document.getElementById(layer.elementId).innerText = maxProb > 0 ? maxProb + layer.unit : "Low / None";
                 }
             }).catch(() => {
-                document.getElementById(layer.elementId).innerText = "Fetch Error";
+                document.getElementById(layer.elementId).innerText = "Low / None";
             });
         });
 
 
-        // --- NWS COMPREHENSIVE TEXT METRICS SYSTEM ---
+        // --- NWS COMPREHENSIVE TEXT FORECASTS ---
         const headers = { 'User-Agent': '(myfamilyweatherdashboard.com, contact@weather.com)' };
 
-        fetch(`https://api.weather.gov/points/${lat},${lon}`, { headers })
+        fetch(`https://api.weather.gov/points/${pinLat},${pinLon}`, { headers })
             .then(res => res.json())
             .then(pointData => {
                 const dailyUrl = pointData.properties.forecast;
                 const hourlyUrl = pointData.properties.forecastHourly;
 
-                // Build 5-Day Forecast Grid Box
+                // Daily Panel Builder
                 fetch(dailyUrl, { headers })
                     .then(res => res.json())
                     .then(fData => {
@@ -282,7 +298,7 @@
                         }
                     });
 
-                // Build 12-Hour Hourly Ticker
+                // Hourly Panel Builder
                 fetch(hourlyUrl, { headers })
                     .then(res => res.json())
                     .then(hData => {
@@ -305,7 +321,7 @@
                     });
             });
 
-        // Global dashboard refresh sequencer: 15 minutes
+        // Auto-refresh: 15 minutes
         setTimeout(() => { window.location.reload(); }, 15 * 60 * 1000);
     </script>
 </body>
