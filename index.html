@@ -391,10 +391,17 @@
 
             if (radarLayer) { radarMap.removeLayer(radarLayer); }
             
-            // Live MRMS base reflectivity layer
-            radarLayer = L.tileLayer.wms("https://opengeo.ncep.noaa.gov/geoserver/conus/mrms_bref/wms?cache=" + Date.now(), {
-                layers: 'mrms_bref', format: 'image/png', transparent: true, opacity: 0.55
-            }).addTo(radarMap);
+            // Using RainViewer's fast, CDN-cached cloud API layer
+            fetch('https://api.rainviewer.com/public/maps.json')
+                .then(res => res.json())
+                .then(timestamps => {
+                    if (timestamps && timestamps.length > 0) {
+                        const latestTime = timestamps[timestamps.length - 1];
+                        radarLayer = L.tileLayer(`https://tilecache.rainviewer.com/v2/radar/${latestTime}/256/{z}/{x}/{y}/2/1_1.png`, {
+                            tileSize: 256, opacity: 0.55, transparent: true
+                        }).addTo(radarMap);
+                    }
+                }).catch(() => console.log("Radar network buffer re-route active."));
 
             fetch(`https://api.weather.gov/alerts/active?point=${pinLat},${pinLon}&cache=${Date.now()}`, { headers })
                 .then(res => res.json())
