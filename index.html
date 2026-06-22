@@ -41,6 +41,7 @@
             height: 100vh;
             box-sizing: border-box;
             overflow: hidden;
+            transition: background-color 0.5s ease;
         }
 
         .dashboard {
@@ -63,6 +64,7 @@
             box-shadow: 0 4px 12px var(--panel-shadow);
             border: 1px solid var(--border-color);
             position: relative;
+            transition: background-color 0.5s ease;
         }
 
         h2 {
@@ -76,20 +78,35 @@
             padding-bottom: 4px;
         }
 
-        .map-wrapper { 
-            position: relative; 
-            width: 100%; 
-            height: 100%; 
-            overflow: hidden;
-            border-radius: 8px;
-        }
-        
-        .map-frame {
+        /* Television Graphic Presentation Enclosures */
+        .media-container {
+            position: relative;
             width: 100%;
             height: 100%;
-            border: none;
-            border-radius: 8px;
-            background-color: #e5e9f0;
+            overflow: hidden;
+            background: #000000;
+            border-radius: 6px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .media-stream {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Custom Layer CSS Pins */
+        .tv-pin {
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 2px solid #ffffff;
+            box-shadow: 0 0 8px rgba(0,0,0,0.5);
+            transform: translate(-50%, -50%);
+            z-index: 10;
         }
 
         .forecast-list, .hourly-list {
@@ -146,7 +163,6 @@
             z-index: 1000;
             border: 1px solid var(--border-color);
             color: var(--text-main);
-            pointer-events: none;
         }
         .threat-item { margin-bottom: 2px; font-weight: bold; }
         .threat-tor { color: #c62828; }
@@ -168,22 +184,26 @@
             color: var(--text-main);
             display: flex;
             gap: 10px;
-            pointer-events: none;
         }
     </style>
 </head>
 <body>
 
     <div class="dashboard">
+        
         <div class="panel" style="padding:0;">
-            <div class="map-wrapper">
-                <iframe id="radarFrame" class="map-frame" allow="geolocation"></iframe>
+            <div class="media-container" id="radarContainer">
+                <img id="radarStream" class="media-stream" src="https://radar.weather.gov/ridge/standard/CONUS_LOOP.gif" alt="Live Radar Loop">
+                <div id="radarPin1" class="tv-pin"></div>
+                <div id="radarPin2" class="tv-pin" style="display:none;"></div>
             </div>
         </div>
 
         <div class="panel" style="padding:0;">
-            <div class="map-wrapper">
-                <iframe id="outlookFrame" class="map-frame" allow="geolocation"></iframe>
+            <div class="media-container" id="outlookContainer">
+                <img id="outlookStream" class="media-stream" src="https://www.spc.noaa.gov/products/outlook/day1otlk.gif" alt="Severe Weather Outlook">
+                <div id="outlookPin1" class="tv-pin"></div>
+                <div id="outlookPin2" class="tv-pin" style="display:none;"></div>
                 
                 <div class="severe-breakdown" id="breakdownBox">
                     <div class="threat-item threat-tor">🌪️ Tornado: <span id="prob-tor">0%</span></div>
@@ -207,6 +227,7 @@
             <h2>Hourly Forecast (Next 10 Hours)</h2>
             <div class="hourly-list" id="hourly-forecast">Loading hourly data...</div>
         </div>
+
     </div>
 
     <script>
@@ -214,17 +235,66 @@
         
         const pinLat = parseFloat(urlParams.get('pinLat')) || 35.5498; 
         const pinLon = parseFloat(urlParams.get('pinLon')) || -84.8866;
+        const pinColor = urlParams.get('pinColor') || '#00843D';
 
-        const radarZoom = Math.round(parseInt(urlParams.get('radarZoom')) || 8);
-        const outlookZoom = Math.round(parseInt(urlParams.get('outlookZoom')) || 5);
+        const pinLat2 = urlParams.get('pinLat2') ? parseFloat(urlParams.get('pinLat2')) : null;
+        const pinLon2 = urlParams.get('pinLon2') ? parseFloat(urlParams.get('pinLon2')) : null;
+        const pinColor2 = urlParams.get('pinColor2') || '#0C2340';
+        
         const headers = { 'User-Agent': '(myfamilyweatherdashboard.com, contact@weather.com)' };
 
-        // --- INJECT EMBEDDED MAP STREAMS INTO THE IFRAMES ---
-        // Dynamically generating interactive secure maps centered directly on your parameters
-        document.getElementById('radarFrame').src = `https://www.rainviewer.com/map.html?loc=${pinLat},${pinLon},${radarZoom}&o=1&t=1&e=1&v=1&w=1&sm=1&sn=1`;
-        document.getElementById('outlookFrame').src = `https://www.rainviewer.com/map.html?loc=${pinLat},${pinLon},${outlookZoom}&o=1&t=1&e=0&v=1&w=1&sm=0&sn=1`;
+        // --- 1. PLOT TELEVISION OVERLAY PINS ---
+        // Converts coordinates to crosshair percent coordinates inside raw graphic sheets
+        function plotTVPins() {
+            // CONUS radar bounding map boxes
+            const radarMinLat = 20.0, radarMaxLat = 50.0;
+            const radarMinLon = -130.0, radarMaxLon = -60.0;
+            
+            const rX1 = ((pinLon - radarMinLon) / (radarMaxLon - radarMinLon)) * 100;
+            const rY1 = (100 - ((pinLat - radarMinLat) / (radarMaxLat - radarMinLat)) * 100);
+            
+            const p1_radar = document.getElementById('radarPin1');
+            p1_radar.style.left = `${rX1}%`; p1_radar.style.top = `${rY1}%`;
+            p1_radar.style.backgroundColor = pinColor;
 
-        // --- FIXED SUN ENGINE: True Local Calculations and Theme Filters ---
+            // SPC Day 1 bounding coordinate anchors
+            const spcMinLat = 23.0, spcMaxLat = 50.0;
+            const spcMinLon = -127.0, spcMaxLon = -65.0;
+
+            const oX1 = ((pinLon - spcMinLon) / (spcMaxLon - spcMinLon)) * 100;
+            const oY1 = (100 - ((pinLat - spcMinLat) / (spcMaxLat - spcMinLat)) * 100);
+
+            const p1_out = document.getElementById('outlookPin1');
+            p1_out.style.left = `${oX1}%`; p1_out.style.top = `${oY1}%`;
+            p1_out.style.backgroundColor = pinColor;
+
+            if (pinLat2 && pinLon2) {
+                const rX2 = ((pinLon2 - radarMinLon) / (radarMaxLon - radarMinLon)) * 100;
+                const rY2 = (100 - ((pinLat2 - radarMinLat) / (radarMaxLat - radarMinLat)) * 100);
+                const p2_radar = document.getElementById('radarPin2');
+                p2_radar.style.left = `${rX2}%`; p2_radar.style.top = `${rY2}%`;
+                p2_radar.style.backgroundColor = pinColor2;
+                p2_radar.style.display = 'block';
+
+                const oX2 = ((pinLon2 - spcMinLon) / (spcMaxLon - spcMinLon)) * 100;
+                const oY2 = (100 - ((pinLat2 - spcMinLat) / (spcMaxLat - spcMinLat)) * 100);
+                const p2_out = document.getElementById('outlookPin2');
+                p2_out.style.left = `${oX2}%`; p2_out.style.top = `${oY2}%`;
+                p2_out.style.backgroundColor = pinColor2;
+                p2_out.style.display = 'block';
+            }
+        }
+        plotTVPins();
+
+        // --- 2. AUTOMATIC GRAPHIC REFRESH TIMERS (Zero Clicking Allowed) ---
+        function reloadGraphicFeeds() {
+            const d = new Date().getTime();
+            document.getElementById('radarStream').src = "https://radar.weather.gov/ridge/standard/CONUS_LOOP.gif?cache=" + d;
+            document.getElementById('outlookStream').src = "https://www.spc.noaa.gov/products/outlook/day1otlk.gif?cache=" + d;
+        }
+        setInterval(reloadGraphicFeeds, 300000); // Silent refresh cycle every 5 minutes
+
+        // --- 3. THEME & SOLAR CLOCK TRACKERS ---
         function computeSolarTimes(lat, lon) {
             const now = new Date();
             const start = new Date(now.getFullYear(), 0, 0);
@@ -275,11 +345,7 @@
             document.getElementById('sun-rise').innerText = parseClockStr(localRiseHours, 'AM');
             document.getElementById('sun-set').innerText = parseClockStr(localSetHours, 'PM');
 
-            const currentHours = now.getHours();
-            const currentMinutes = now.getMinutes();
-            const currentDecimalTime = currentHours + (currentMinutes / 60);
-
-            // Validates day or night constraints to control the theme state
+            const currentDecimalTime = now.getHours() + (now.getMinutes() / 60);
             if (currentDecimalTime >= localRiseHours && currentDecimalTime <= localSetHours) {
                 document.body.classList.remove('dark-theme');
             } else {
@@ -288,7 +354,7 @@
         }
         computeSolarTimes(pinLat, pinLon);
 
-        // --- LIVE PROBABILITIES FEED ---
+        // --- 4. DATA PROBABILITIES METRICS ---
         const threatLayers = [
             { id: 3, elementId: 'prob-tor', unit: '%' },
             { id: 5, elementId: 'prob-hail', unit: '%' },
@@ -308,7 +374,7 @@
             }).catch(() => document.getElementById(layer.elementId).innerText = "0%");
         });
 
-        // --- FORECAST DATA ENGINE ---
+        // --- 5. GRID PANELS FORECAST ENGINE ---
         fetch(`https://api.weather.gov/points/${pinLat},${pinLon}`, { headers })
             .then(res => res.json())
             .then(pointData => {
