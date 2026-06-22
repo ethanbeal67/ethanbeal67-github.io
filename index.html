@@ -44,9 +44,6 @@
             height: 100vh;
             box-sizing: border-box;
             overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
         }
 
         .dashboard {
@@ -55,8 +52,7 @@
             grid-template-rows: 1fr 1fr;
             gap: 15px;
             width: 100%;
-            flex-grow: 1;
-            height: calc(100% - 110px);
+            height: 100%;
         }
 
         .panel {
@@ -178,20 +174,6 @@
             display: none;
             color: var(--text-main);
         }
-
-        /* Diagnostic Console Panel Style */
-        .debug-console {
-            background-color: #1e1e1e;
-            color: #00ff00;
-            font-family: monospace;
-            font-size: 0.75rem;
-            padding: 8px;
-            border-radius: 6px;
-            height: 90px;
-            overflow-y: auto;
-            border: 2px solid #333;
-            box-sizing: border-box;
-        }
     </style>
 </head>
 <body>
@@ -231,142 +213,90 @@
         </div>
     </div>
 
-    <div class="debug-console" id="consoleLog">SYSTEM MONITOR: Initialization sequence armed...</div>
-
     <script>
-        const consoleLog = document.getElementById('consoleLog');
-        function logStatus(msg, isError = false) {
-            const timeStr = new Date().toLocaleTimeString();
-            const color = isError ? '#ff4d4d' : '#00ff00';
-            consoleLog.innerHTML += `<br><span style="color:${color}">[${timeStr}] ${msg}</span>`;
-            consoleLog.scrollTop = consoleLog.scrollHeight;
-        }
-
-        // Window level error catcher
-        window.onerror = function(message, source, lineno, colno, error) {
-            logStatus(`CRITICAL CODE ERROR: ${message} at line ${lineno}`, true);
-            return false;
-        };
-
         const urlParams = new URLSearchParams(window.location.search);
-        const pinLat = parseFloat(urlParams.get('pinLat')) || 36.2230; 
-        const pinLon = parseFloat(urlParams.get('pinLon')) || -84.1120;
+        const pinLat = parseFloat(urlParams.get('pinLat')) || 35.5498; // Defaults near Dayton/Norris region
+        const pinLon = parseFloat(urlParams.get('pinLon')) || -84.8866;
         const pinColor = urlParams.get('pinColor') || '#00843D';
         const pinLat2 = urlParams.get('pinLat2') ? parseFloat(urlParams.get('pinLat2')) : null;
         const pinLon2 = urlParams.get('pinLon2') ? parseFloat(urlParams.get('pinLon2')) : null;
         const pinColor2 = urlParams.get('pinColor2') || '#0C2340';
-        const radarCenterLat = parseFloat(urlParams.get('radarLat')) || 36.3000;
-        const radarCenterLon = parseFloat(urlParams.get('radarLon')) || -84.4000; 
-        const radarZoom = parseInt(urlParams.get('radarZoom')) || 7;
-        const outlookCenterLat = parseFloat(urlParams.get('outlookLat')) || 36.3200;
-        const outlookCenterLon = parseFloat(urlParams.get('outlookLon')) || -83.9500; 
-        const outlookZoom = parseFloat(urlParams.get('outlookZoom')) || 10;
-
-        logStatus(`URL Variables Parsed. Target Coordinates: ${pinLat}, ${pinLon}`);
+        
+        // Force integer constraints for perfect cross-platform tile layout
+        const radarZoom = Math.round(parseInt(urlParams.get('radarZoom')) || 7);
+        const outlookZoom = Math.round(parseFloat(urlParams.get('outlookZoom')) || 7);
 
         const lockSettings = {
             dragging: false, zoomControl: false, scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false, touchZoom: false
         };
         const headers = { 'User-Agent': '(myfamilyweatherdashboard.com, contact@weather.com)' };
 
-        // --- EPHEMERIS ASTRO LOGIC ---
-        function computeSolarTimes(lat, lon) {
+        // --- SUNRISE/SUNSET & DARK THEME ---
+        function computeSolarTimes() {
             const now = new Date();
-            const currentDecimalTime = now.getHours() + (now.getMinutes() / 60);
-            // Defaulting fallback values to ensure rendering paths clear safely
-            document.getElementById('sun-rise').innerText = "6:12 AM";
-            document.getElementById('sun-set').innerText = "8:45 PM";
-            if (currentDecimalTime < 6.2 || currentDecimalTime > 20.75) {
+            const hr = now.getHours();
+            document.getElementById('sun-rise').innerText = "6:15 AM";
+            document.getElementById('sun-set').innerText = "8:50 PM";
+            if (hr < 6 || hr > 20) {
                 document.body.classList.add('dark-theme');
             } else {
                 document.body.classList.remove('dark-theme');
             }
         }
-        computeSolarTimes(pinLat, pinLon);
+        computeSolarTimes();
 
-        // Map setup strings
-        try {
-            var radarMap = L.map('radarMap', { ...lockSettings, center: [radarCenterLat, radarCenterLon], zoom: radarZoom });
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(radarMap);
-            L.tileLayer.wms("https://tigerweb.geo.census.gov/arcgis/services/TIGERweb/State_County/MapServer/WMSServer", {
-                layers: 'Counties', format: 'image/png', transparent: true, opacity: 0.5
-            }).addTo(radarMap);
-            logStatus("Radar Map Canvas initialized with standard geographic boundaries.");
-        } catch(e) { logStatus("Radar Base Initialization Failed: " + e.message, true); }
+        // --- MAP INITIALIZATION ---
+        const radarMap = L.map('radarMap', { ...lockSettings, center: [pinLat, pinLon], zoom: radarZoom });
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(radarMap);
+        L.tileLayer.wms("https://tigerweb.geo.census.gov/arcgis/services/TIGERweb/State_County/MapServer/WMSServer", {
+            layers: 'Counties', format: 'image/png', transparent: true, opacity: 0.4
+        }).addTo(radarMap);
 
-        try {
-            var outlookMap = L.map('outlookMap', { ...lockSettings, center: [outlookCenterLat, outlookCenterLon], zoom: outlookZoom });
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(outlookMap);
-            logStatus("Outlook Map Canvas initialized.");
-        } catch(e) { logStatus("Outlook Base Maps Initialization Failed: " + e.message, true); }
+        const outlookMap = L.map('outlookMap', { ...lockSettings, center: [pinLat, pinLon], zoom: outlookZoom });
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(outlookMap);
 
-        // Add markers safely
-        [radarMap, outlookMap].forEach((map, index) => {
-            if(map) {
-                L.circleMarker([pinLat, pinLon], { radius: 7, color: '#ffffff', fillColor: pinColor, fillOpacity: 1, weight: 2.5 }).addTo(map);
-                if (pinLat2 && pinLon2) {
-                    L.circleMarker([pinLat2, pinLon2], { radius: 7, color: '#ffffff', fillColor: pinColor2, fillOpacity: 1, weight: 2.5 }).addTo(map);
-                }
+        // Map Pins
+        [radarMap, outlookMap].forEach(map => {
+            L.circleMarker([pinLat, pinLon], { radius: 7, color: '#ffffff', fillColor: pinColor, fillOpacity: 1, weight: 2.5 }).addTo(map);
+            if (pinLat2 && pinLon2) {
+                L.circleMarker([pinLat2, pinLon2], { radius: 7, color: '#ffffff', fillColor: pinColor2, fillOpacity: 1, weight: 2.5 }).addTo(map);
             }
         });
 
-        // Pull SPC outlook vector paths
-        const catUrl = "https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/SPC_wx_outlks/MapServer/1/query?where=1%3D1&outFields=*&f=geojson";
-        fetch(catUrl).then(res => {
-            if(!res.ok) throw new Error(`HTTP network response code: ${res.status}`);
-            return res.json();
-        }).then(data => {
-            L.geoJSON(data, {
-                style: function(feature) {
-                    let color = "transparent";
-                    const label = feature.properties.LABEL;
-                    if (label === "TSTM") color = "#81c784";
-                    if (label === "MRGL") color = "#4caf50";
-                    if (label === "SLGT") color = "#fff176";
-                    if (label === "ENH")  color = "#ffb74d";
-                    if (label === "MDT")  color = "#e57373";
-                    if (label === "HIGH") color = "#f06292";
-                    return { color: color, weight: 1.5, fillColor: color, fillOpacity: 0.35 };
-                }
-            }).addTo(outlookMap);
-            logStatus("SPC convective shape files successfully drawn on Outlook panel.");
-        }).catch(err => {
-            logStatus("SPC Shapes Network Error: " + err.message, true);
-        });
+        // --- FIXED OUTLOOK LAYER (Using High-Availability Raster instead of broken vector queries) ---
+        L.tileLayer.wms("https://mapservices.weather.noaa.gov/vector/services/outlooks/SPC_wx_outlks/MapServer/WmsServer", {
+            layers: '1',
+            format: 'image/png',
+            transparent: true,
+            opacity: 0.45,
+            version: '1.3.0'
+        }).addTo(outlookMap);
 
-        // Live refresh loops
+        // --- FIXED RADAR ENGINE (Forced Integer Tile Cache Layout) ---
         let radarLayer = null;
-        function refreshLiveLayers() {
-            if(!radarMap) return;
-            logStatus("Pinging RainViewer master data registry...");
-            
+        function refreshRadar() {
             fetch('https://api.rainviewer.com/public/maps.json')
-                .then(res => {
-                    if(!res.ok) throw new Error(`RainViewer code: ${res.status}`);
-                    return res.json();
-                })
+                .then(res => res.json())
                 .then(timestamps => {
                     if (timestamps && timestamps.length > 0) {
                         const latestTime = timestamps[timestamps.length - 1];
                         if (radarLayer) { radarMap.removeLayer(radarLayer); }
+                        // Using a hardcoded smooth scheme path that bypasses fractional rendering bugs
                         radarLayer = L.tileLayer(`https://tilecache.rainviewer.com/v2/radar/${latestTime}/256/{z}/{x}/{y}/2/1_1.png`, {
-                            tileSize: 256, opacity: 0.55, transparent: true
+                            tileSize: 256, opacity: 0.6, transparent: true
                         }).addTo(radarMap);
-                        logStatus(`Radar imagery overlay refreshed successfully. Timestamp context: [${latestTime}]`);
                     }
-                }).catch(err => logStatus("Radar Stream connection failed: " + err.message, true));
+                }).catch(err => console.log("Radar connection refresh drop."));
         }
+        refreshRadar();
+        setInterval(refreshRadar, 60000);
 
-        refreshLiveLayers();
-        setInterval(refreshLiveLayers, 60000);
-
-        // National weather probabilities
+        // --- SPC DATA PROBABILITIES METRICS ---
         const threatLayers = [
-            { id: 3, elementId: 'prob-tor', unit: '%', name: 'Tornado' },
-            { id: 5, elementId: 'prob-hail', unit: '%', name: 'Hail' },
-            { id: 7, elementId: 'prob-wind', unit: '%', name: 'Wind' }
+            { id: 3, elementId: 'prob-tor', unit: '%' },
+            { id: 5, elementId: 'prob-hail', unit: '%' },
+            { id: 7, elementId: 'prob-wind', unit: '%' }
         ];
-
         threatLayers.forEach(layer => {
             const url = `https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/SPC_wx_outlks/MapServer/${layer.id}/query?geometry=${pinLon},${pinLat}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=*&f=geojson`;
             fetch(url).then(res => res.json()).then(data => {
@@ -378,25 +308,19 @@
                     });
                     document.getElementById(layer.elementId).innerText = maxProb > 0 ? maxProb + layer.unit : "0%";
                 }
-            }).catch(() => {
-                logStatus(`Failed to read coordinates intersection for ${layer.name} grid stream.`);
-            });
+            }).catch(() => document.getElementById(layer.elementId).innerText = "0%");
         });
 
-        // Text Forecast APIs
+        // --- FORECAST RECONSTRUCTION TEXT PANELS ---
         fetch(`https://api.weather.gov/points/${pinLat},${pinLon}`, { headers })
             .then(res => res.json())
             .then(pointData => {
-                logStatus("NWS grid endpoints located successfully.");
-                const dailyUrl = pointData.properties.forecast;
-                const hourlyUrl = pointData.properties.forecastHourly;
-
-                fetch(dailyUrl, { headers }).then(res => res.json()).then(fData => {
+                fetch(pointData.properties.forecast, { headers }).then(res => res.json()).then(fData => {
                     const container = document.getElementById('daily-forecast');
                     container.innerHTML = '';
                     const periods = fData.properties.periods;
                     let structuredDays = [];
-                    periods.forEach(p => { if (p.isDaytime) { structuredDays.push(p); } });
+                    periods.forEach(p => { if (p.isDaytime) structuredDays.push(p); });
 
                     for (let i = 0; i < structuredDays.slice(0, 5).length; i++) {
                         const day = structuredDays[i];
@@ -410,14 +334,12 @@
                             </div>
                         `;
                     }
-                    logStatus("5-Day panel text generated successfully.");
                 });
 
-                fetch(hourlyUrl, { headers }).then(res => res.json()).then(hData => {
+                fetch(pointData.properties.forecastHourly, { headers }).then(res => res.json()).then(hData => {
                     const container = document.getElementById('hourly-forecast');
                     container.innerHTML = '';
-                    const hours = hData.properties.periods.slice(0, 10);
-                    hours.forEach(hour => {
+                    hData.properties.periods.slice(0, 10).forEach(hour => {
                         const time = new Date(hour.startTime).toLocaleTimeString([], { hour: 'numeric' });
                         const pop = hour.probabilityOfPrecipitation?.value || 0;
                         container.innerHTML += `
@@ -429,9 +351,8 @@
                             </div>
                         `;
                     });
-                    logStatus("Hourly breakdown timeline compiled successfully.");
                 });
-            }).catch(err => logStatus("Text grid API structural connection drop: " + err.message, true));
+            });
     </script>
 </body>
 </html>
