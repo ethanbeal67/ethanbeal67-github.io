@@ -44,6 +44,7 @@
             height: 100vh;
             box-sizing: border-box;
             overflow: hidden;
+            transition: background-color 0.5s ease;
         }
 
         .dashboard {
@@ -66,6 +67,7 @@
             box-shadow: 0 4px 12px var(--panel-shadow);
             border: 1px solid var(--border-color);
             position: relative;
+            transition: background-color 0.5s ease, border-color 0.5s ease;
         }
 
         h2 {
@@ -79,8 +81,20 @@
             padding-bottom: 4px;
         }
 
-        .map-wrapper { padding: 0; position: relative; width: 100%; height: 100%; }
-        .map-instance { width: 100%; height: 100%; border-radius: 8px; background-color: #e5e9f0; }
+        /* Essential Layout Wrappers to keep windows from messing up */
+        .map-wrapper { 
+            position: relative; 
+            width: 100%; 
+            height: 100%; 
+            overflow: hidden;
+        }
+        
+        .map-instance { 
+            width: 100%; 
+            height: 100%; 
+            border-radius: 8px; 
+            background-color: #e5e9f0; 
+        }
 
         .forecast-list, .hourly-list {
             display: flex;
@@ -136,6 +150,7 @@
             z-index: 1000;
             border: 1px solid var(--border-color);
             color: var(--text-main);
+            pointer-events: none;
         }
         .threat-item { margin-bottom: 2px; font-weight: bold; }
         .threat-tor { color: #c62828; }
@@ -157,6 +172,7 @@
             color: var(--text-main);
             display: flex;
             gap: 10px;
+            pointer-events: none;
         }
 
         .text-alert-overlay {
@@ -179,22 +195,28 @@
 <body>
 
     <div class="dashboard">
+        
         <div class="panel" style="padding:0;">
-            <div class="map-wrapper"><div id="radarMap" class="map-instance"></div></div>
+            <div class="map-wrapper">
+                <div id="radarMap" class="map-instance"></div>
+            </div>
         </div>
 
         <div class="panel" style="padding:0;">
             <div class="map-wrapper">
                 <div id="outlookMap" class="map-instance"></div>
+                
                 <div class="severe-breakdown" id="breakdownBox">
                     <div class="threat-item threat-tor">🌪️ Tornado: <span id="prob-tor">0%</span></div>
                     <div class="threat-item threat-wind">💨 Wind: <span id="prob-wind">0%</span></div>
                     <div class="threat-item threat-hail">💥 Hail: <span id="prob-hail">0%</span></div>
                 </div>
+
                 <div class="astro-panel" id="astroBox">
                     <span>🌅 Sunrise: <span id="sun-rise">--:--</span></span>
                     <span>🌇 Sunset: <span id="sun-set">--:--</span></span>
                 </div>
+
                 <div class="text-alert-overlay" id="alertBox">
                     <div class="alert-title" id="alertBoxTitle">🚨 Alert Active</div>
                     <div class="alert-desc" id="alertBoxDesc">Loading...</div>
@@ -211,27 +233,36 @@
             <h2>Hourly Forecast (Next 10 Hours)</h2>
             <div class="hourly-list" id="hourly-forecast">Loading hourly data...</div>
         </div>
+
     </div>
 
     <script>
         const urlParams = new URLSearchParams(window.location.search);
-        const pinLat = parseFloat(urlParams.get('pinLat')) || 35.5498; // Defaults near Dayton/Norris region
+        
+        // Dynamic location coordinates parsing
+        const pinLat = parseFloat(urlParams.get('pinLat')) || 35.5498; 
         const pinLon = parseFloat(urlParams.get('pinLon')) || -84.8866;
         const pinColor = urlParams.get('pinColor') || '#00843D';
+
         const pinLat2 = urlParams.get('pinLat2') ? parseFloat(urlParams.get('pinLat2')) : null;
         const pinLon2 = urlParams.get('pinLon2') ? parseFloat(urlParams.get('pinLon2')) : null;
         const pinColor2 = urlParams.get('pinColor2') || '#0C2340';
         
-        // Force integer constraints for perfect cross-platform tile layout
+        // Strict mapping constraints to ensure proper tile generation
+        const radarCenterLat = parseFloat(urlParams.get('radarLat')) || pinLat;
+        const radarCenterLon = parseFloat(urlParams.get('radarLon')) || pinLon;
         const radarZoom = Math.round(parseInt(urlParams.get('radarZoom')) || 7);
-        const outlookZoom = Math.round(parseFloat(urlParams.get('outlookZoom')) || 7);
+
+        const outlookCenterLat = parseFloat(urlParams.get('outlookLat')) || pinLat;
+        const outlookCenterLon = parseFloat(urlParams.get('outlookLon')) || pinLon;
+        const outlookZoom = Math.round(parseInt(urlParams.get('outlookZoom')) || 7);
 
         const lockSettings = {
             dragging: false, zoomControl: false, scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false, touchZoom: false
         };
         const headers = { 'User-Agent': '(myfamilyweatherdashboard.com, contact@weather.com)' };
 
-        // --- SUNRISE/SUNSET & DARK THEME ---
+        // --- THEME & SUN TRACKER TRACKING ---
         function computeSolarTimes() {
             const now = new Date();
             const hr = now.getHours();
@@ -245,17 +276,18 @@
         }
         computeSolarTimes();
 
-        // --- MAP INITIALIZATION ---
-        const radarMap = L.map('radarMap', { ...lockSettings, center: [pinLat, pinLon], zoom: radarZoom });
+        // --- MAP GENERATION PANELS ---
+        const radarMap = L.map('radarMap', { ...lockSettings, center: [radarCenterLat, radarCenterLon], zoom: radarZoom });
         L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(radarMap);
+        
         L.tileLayer.wms("https://tigerweb.geo.census.gov/arcgis/services/TIGERweb/State_County/MapServer/WMSServer", {
             layers: 'Counties', format: 'image/png', transparent: true, opacity: 0.4
         }).addTo(radarMap);
 
-        const outlookMap = L.map('outlookMap', { ...lockSettings, center: [pinLat, pinLon], zoom: outlookZoom });
+        const outlookMap = L.map('outlookMap', { ...lockSettings, center: [outlookCenterLat, outlookCenterLon], zoom: outlookZoom });
         L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(outlookMap);
 
-        // Map Pins
+        // Pin Positioning
         [radarMap, outlookMap].forEach(map => {
             L.circleMarker([pinLat, pinLon], { radius: 7, color: '#ffffff', fillColor: pinColor, fillOpacity: 1, weight: 2.5 }).addTo(map);
             if (pinLat2 && pinLon2) {
@@ -263,16 +295,16 @@
             }
         });
 
-        // --- FIXED OUTLOOK LAYER (Using High-Availability Raster instead of broken vector queries) ---
+        // --- HIGH AVAILABILITY SPC OUTLOOK GRAPHIC ENGINE ---
         L.tileLayer.wms("https://mapservices.weather.noaa.gov/vector/services/outlooks/SPC_wx_outlks/MapServer/WmsServer", {
             layers: '1',
             format: 'image/png',
             transparent: true,
-            opacity: 0.45,
+            opacity: 0.5,
             version: '1.3.0'
         }).addTo(outlookMap);
 
-        // --- FIXED RADAR ENGINE (Forced Integer Tile Cache Layout) ---
+        // --- CLOUD CACHED CDN RADAR ENGINE ---
         let radarLayer = null;
         function refreshRadar() {
             fetch('https://api.rainviewer.com/public/maps.json')
@@ -281,17 +313,16 @@
                     if (timestamps && timestamps.length > 0) {
                         const latestTime = timestamps[timestamps.length - 1];
                         if (radarLayer) { radarMap.removeLayer(radarLayer); }
-                        // Using a hardcoded smooth scheme path that bypasses fractional rendering bugs
                         radarLayer = L.tileLayer(`https://tilecache.rainviewer.com/v2/radar/${latestTime}/256/{z}/{x}/{y}/2/1_1.png`, {
                             tileSize: 256, opacity: 0.6, transparent: true
                         }).addTo(radarMap);
                     }
-                }).catch(err => console.log("Radar connection refresh drop."));
+                }).catch(err => console.log("Radar stream reset encountered."));
         }
         refreshRadar();
         setInterval(refreshRadar, 60000);
 
-        // --- SPC DATA PROBABILITIES METRICS ---
+        // --- LIVE PROBABILITIES ALERTS FEED ---
         const threatLayers = [
             { id: 3, elementId: 'prob-tor', unit: '%' },
             { id: 5, elementId: 'prob-hail', unit: '%' },
@@ -311,7 +342,7 @@
             }).catch(() => document.getElementById(layer.elementId).innerText = "0%");
         });
 
-        // --- FORECAST RECONSTRUCTION TEXT PANELS ---
+        // --- FORECAST RECONSTRUCTION METRICS ---
         fetch(`https://api.weather.gov/points/${pinLat},${pinLon}`, { headers })
             .then(res => res.json())
             .then(pointData => {
