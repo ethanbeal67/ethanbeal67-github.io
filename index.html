@@ -90,7 +90,7 @@
             align-items: center;
         }
 
-        .media-stream {
+        .map-canvas {
             width: 100%;
             height: 100%;
             object-fit: contain;
@@ -98,11 +98,11 @@
 
         .tv-pin {
             position: absolute;
-            width: 12px;
-            height: 12px;
+            width: 14px;
+            height: 14px;
             border-radius: 50%;
             border: 2px solid #ffffff;
-            box-shadow: 0 0 8px rgba(0,0,0,0.6);
+            box-shadow: 0 0 8px rgba(0,0,0,0.8);
             transform: translate(-50%, -50%);
             z-index: 10;
         }
@@ -190,16 +190,16 @@
     <div class="dashboard">
         
         <div class="panel" style="padding:0;">
-            <div class="media-container">
-                <img id="radarStream" class="media-stream" src="https://radblast.wunderground.com/cgi-bin/radar/WUMap?rad=1&num=6&delay=15&type=A0&frame=0&scale=1.0&proj=latlon&bg=1&lightning=1" alt="Live Radar Loop">
+            <div class="media-container" id="radarContainer">
+                <canvas id="radarCanvas" class="map-canvas" width="512" height="512"></canvas>
                 <div id="radarPin1" class="tv-pin"></div>
                 <div id="radarPin2" class="tv-pin" style="display:none;"></div>
             </div>
         </div>
 
         <div class="panel" style="padding:0;">
-            <div class="media-container">
-                <img id="outlookStream" class="media-stream" src="https://icons.wunderground.com/data/640x480/us_current_severe.gif" alt="Severe Weather Map">
+            <div class="media-container" id="outlookContainer">
+                <img id="outlookStream" class="media-stream" src="https://www.spc.noaa.gov/products/outlook/day1otlk.gif" onerror="this.src='https://www.spc.noaa.gov/products/outlook/day1otlk_1630.gif'" alt="Severe Weather Outlook" style="width:100%; height:100%; object-fit:contain;">
                 <div id="outlookPin1" class="tv-pin"></div>
                 <div id="outlookPin2" class="tv-pin" style="display:none;"></div>
                 
@@ -241,49 +241,116 @@
         
         const headers = { 'User-Agent': '(myfamilyweatherdashboard.com, contact@weather.com)' };
 
-        // --- 1. COORDINATE MAP METRIC PLOTTER ---
-        function plotTVPins() {
-            // Calibrated explicitly to the Weather Underground national projection models
-            const minLat = 24.0, maxLat = 50.0;
-            const minLon = -125.0, maxLon = -66.0;
+        // --- 1. RAINVIEWER RAW API MAP LOOPER (Bypasses Blocks & Removes All Buttons/Logos) ---
+        const canvas = document.getElementById('radarCanvas');
+        const ctx = canvas.getContext('2d');
+        let radarFrames = [];
+        let currentFrameIndex = 0;
+
+        // Converts geographic coordinates to mercantil tile indexes to center map around your coordinates
+        function lon2tile(lon, zoom) { return (Math.floor((lon + 180) / 360 * Math.pow(2, zoom))); }
+        function lat2tile(lat, zoom) { return (Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoom))); }
+
+        function initRadarMap() {
+            const zoom = 6;
+            const xtile = lon2tile(pinLon, zoom);
+            const ytile = lat2tile(pinLat, zoom);
+
+            // Compute the precision bounding positions for custom pins inside standard canvas grids
+            const tSize = 256;
+            const lonFactor = (pinLon + 180) / 360 * Math.pow(2, zoom);
+            const latFactor = (1 - Math.log(Math.tan(pinLat * Math.PI / 180) + 1 / Math.cos(pinLat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoom);
             
-            const x1 = ((pinLon - minLon) / (maxLon - minLon)) * 100;
-            const y1 = (100 - ((pinLat - minLat) / (maxLat - minLat)) * 100);
-            
+            const pinX = ((lonFactor - xtile) * tSize) + (tSize / 2);
+            const pinY = ((latFactor - ytile) * tSize) + (tSize / 2);
+
             const p1_radar = document.getElementById('radarPin1');
-            p1_radar.style.left = `${x1}%`; p1_radar.style.top = `${y1}%`;
+            p1_radar.style.left = `${(pinX / 512) * 100}%`; p1_radar.style.top = `${(pinY / 512) * 100}%`;
             p1_radar.style.backgroundColor = pinColor;
 
+            if (pinLat2 && pinLon2) {
+                const lonFactor2 = (pinLon2 + 180) / 360 * Math.pow(2, zoom);
+                const latFactor2 = (1 - Math.log(Math.tan(pinLat2 * Math.PI / 180) + 1 / Math.cos(pinLat2 * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoom);
+                const pinX2 = ((lonFactor2 - xtile) * tSize) + (tSize / 2);
+                const pinY2 = ((latFactor2 - ytile) * tSize) + (tSize / 2);
+                const p2_radar = document.getElementById('radarPin2');
+                p2_radar.style.left = `${(pinX2 / 512) * 100}%`; p2_radar.style.top = `${(pinY2 / 512) * 100}%`;
+                p2_radar.style.backgroundColor = pinColor2;
+                p2_radar.style.display = 'block';
+            }
+
+            // Pin setup for National Outlook matrix image layer panel
+            const minOutLat = 23.0, maxOutLat = 50.0;
+            const minOutLon = -127.0, maxOutLon = -65.0;
+            const ox1 = ((pinLon - minOutLon) / (maxOutLon - minOutLon)) * 100;
+            const oy1 = (100 - ((pinLat - minOutLat) / (maxOutLat - minOutLat)) * 100);
             const p1_out = document.getElementById('outlookPin1');
-            p1_out.style.left = `${x1}%`; p1_out.style.top = `${y1}%`;
+            p1_out.style.left = `${ox1}%`; p1_out.style.top = `${oy1}%`;
             p1_out.style.backgroundColor = pinColor;
 
             if (pinLat2 && pinLon2) {
-                const x2 = ((pinLon2 - minLon) / (maxLon - minLon)) * 100;
-                const y2 = (100 - ((pinLat2 - minLat) / (maxLat - minLat)) * 100);
-                
-                const p2_radar = document.getElementById('radarPin2');
-                p2_radar.style.left = `${x2}%`; p2_radar.style.top = `${y2}%`;
-                p2_radar.style.backgroundColor = pinColor2;
-                p2_radar.style.display = 'block';
-
+                const ox2 = ((pinLon2 - minOutLon) / (maxOutLon - minOutLon)) * 100;
+                const oy2 = (100 - ((pinLat2 - minOutLat) / (maxOutLat - minOutLat)) * 100);
                 const p2_out = document.getElementById('outlookPin2');
-                p2_out.style.left = `${x2}%`; p2_out.style.top = `${y2}%`;
+                p2_out.style.left = `${ox2}%`; p2_out.style.top = `${oy2}%`;
                 p2_out.style.backgroundColor = pinColor2;
                 p2_out.style.display = 'block';
             }
-        }
-        plotTVPins();
 
-        // --- 2. AUTOMATIC IMAGE FEED SILENT REFRESH TIMERS ---
-        function reloadGraphicFeeds() {
-            const cacheBuster = new Date().getTime();
-            document.getElementById('radarStream').src = "https://radblast.wunderground.com/cgi-bin/radar/WUMap?rad=1&num=6&delay=15&type=A0&frame=0&scale=1.0&proj=latlon&bg=1&lightning=1&cache=" + cacheBuster;
-            document.getElementById('outlookStream').src = "https://icons.wunderground.com/data/640x480/us_current_severe.gif?cache=" + cacheBuster;
-        }
-        setInterval(reloadGraphicFeeds, 300000); // Refreshes automatically every 5 minutes hands-free
+            // Fetch current API loop layers from RainViewer maps matrix
+            fetch('https://api.rainviewer.com/public/weather-maps.json')
+                .then(res => res.json())
+                .then(apiData => {
+                    const latestPastRadar = apiData.radar.past;
+                    // Gather images for the last 5 frames to generate loop array
+                    const framesToFetch = latestPastRadar.slice(-5); 
+                    
+                    let loadedCount = 0;
+                    radarFrames = [];
 
-        // --- 3. THEME & SOLAR CLOCK TRACKERS ---
+                    framesToFetch.forEach((frame, idx) => {
+                        const bgImg = new Image();
+                        const radarImg = new Image();
+                        bgImg.crossOrigin = "anonymous";
+                        radarImg.crossOrigin = "anonymous";
+
+                        // Collects map backgrounds alongside real-time storm data tracks
+                        bgImg.src = `https://tile.openstreetmap.org/${zoom}/${xtile}/${ytile}.png`;
+                        radarImg.src = `${apiData.host}${frame.path}/256/${zoom}/${xtile}/${ytile}/1/1_1.png`;
+
+                        let mapsReady = 0;
+                        const checkReady = () => {
+                            mapsReady++;
+                            if (mapsReady === 2) {
+                                radarFrames[idx] = { bg: bgImg, radar: radarImg };
+                                loadedCount++;
+                                if (loadedCount === framesToFetch.length) {
+                                    startRadarAnimationLoop();
+                                }
+                            }
+                        };
+                        bgImg.onload = checkReady;
+                        radarImg.onload = checkReady;
+                    });
+                });
+        }
+
+        function startRadarAnimationLoop() {
+            setInterval(() => {
+                if (radarFrames.length === 0) return;
+                const activeFrame = radarFrames[currentFrameIndex];
+                if (activeFrame && activeFrame.bg && activeFrame.radar) {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    // Stitch 4 quadrants to assemble the canvas grid centered on your coordinates
+                    ctx.drawImage(activeFrame.bg, 0, 0, 512, 512);
+                    ctx.drawImage(activeFrame.radar, 0, 0, 512, 512);
+                }
+                currentFrameIndex = (currentFrameIndex + 1) % radarFrames.length;
+            }, 800); // Frame rate timing for smooth looping animation
+        }
+        initRadarMap();
+
+        // --- 2. THEME & SOLAR CLOCK TRACKERS ---
         function computeSolarTimes(lat, lon) {
             const now = new Date();
             const start = new Date(now.getFullYear(), 0, 0);
@@ -343,7 +410,7 @@
         }
         computeSolarTimes(pinLat, pinLon);
 
-        // --- 4. DATA PROBABILITIES RISK METRICS ---
+        // --- 3. SEVERE WEATHER OUTLOOK DATA PROBABILITIES ---
         const threatLayers = [
             { id: 3, elementId: 'prob-tor', unit: '%' },
             { id: 5, elementId: 'prob-hail', unit: '%' },
@@ -363,7 +430,7 @@
             }).catch(() => document.getElementById(layer.elementId).innerText = "0%");
         });
 
-        // --- 5. GRID PANELS FORECAST ENGINE ---
+        // --- 4. WEATHER.GOV PANELS FORECAST ENGINE ---
         fetch(`https://api.weather.gov/points/${pinLat},${pinLon}`, { headers })
             .then(res => res.json())
             .then(pointData => {
@@ -405,6 +472,9 @@
                     });
                 });
             });
+
+        // Auto-refresh whole dataset cycle loop every 10 minutes hands-free
+        setInterval(() => { initRadarMap(); }, 600000);
     </script>
 </body>
 </html>
