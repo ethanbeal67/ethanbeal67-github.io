@@ -44,7 +44,6 @@
             height: 100vh;
             box-sizing: border-box;
             overflow: hidden;
-            transition: background-color 0.5s ease;
         }
 
         .dashboard {
@@ -67,7 +66,6 @@
             box-shadow: 0 4px 12px var(--panel-shadow);
             border: 1px solid var(--border-color);
             position: relative;
-            transition: background-color 0.5s ease, border-color 0.5s ease;
         }
 
         h2 {
@@ -81,7 +79,6 @@
             padding-bottom: 4px;
         }
 
-        /* Essential Layout Wrappers to keep windows from messing up */
         .map-wrapper { 
             position: relative; 
             width: 100%; 
@@ -237,9 +234,9 @@
     </div>
 
     <script>
+        // --- 1. EXTRACT PARAMS FIRST BEFORE DOING ANYTHING ---
         const urlParams = new URLSearchParams(window.location.search);
         
-        // Dynamic location coordinates parsing
         const pinLat = parseFloat(urlParams.get('pinLat')) || 35.5498; 
         const pinLon = parseFloat(urlParams.get('pinLon')) || -84.8866;
         const pinColor = urlParams.get('pinColor') || '#00843D';
@@ -248,7 +245,6 @@
         const pinLon2 = urlParams.get('pinLon2') ? parseFloat(urlParams.get('pinLon2')) : null;
         const pinColor2 = urlParams.get('pinColor2') || '#0C2340';
         
-        // Strict mapping constraints to ensure proper tile generation
         const radarCenterLat = parseFloat(urlParams.get('radarLat')) || pinLat;
         const radarCenterLon = parseFloat(urlParams.get('radarLon')) || pinLon;
         const radarZoom = Math.round(parseInt(urlParams.get('radarZoom')) || 7);
@@ -262,21 +258,68 @@
         };
         const headers = { 'User-Agent': '(myfamilyweatherdashboard.com, contact@weather.com)' };
 
-        // --- THEME & SUN TRACKER TRACKING ---
-        function computeSolarTimes() {
+        // --- 2. TRUE DYNAMIC SUN ALGORITHM (Calculates exact variations by location coords) ---
+        function computeSolarTimes(lat, lon) {
             const now = new Date();
-            const hr = now.getHours();
-            document.getElementById('sun-rise').innerText = "6:15 AM";
-            document.getElementById('sun-set').innerText = "8:50 PM";
-            if (hr < 6 || hr > 20) {
+            const start = new Date(now.getFullYear(), 0, 0);
+            const diff = now - start;
+            const oneDay = 1000 * 60 * 60 * 24;
+            const dayOfYear = Math.floor(diff / oneDay);
+
+            const lngHour = lon / 15;
+            const tRise = dayOfYear + ((6 - lngHour) / 24);
+            const tSet = dayOfYear + ((18 - lngHour) / 24);
+
+            const M_rise = (0.9856 * tRise) - 3.289;
+            const M_set = (0.9856 * tSet) - 3.289;
+
+            const L_rise = M_rise + (1.916 * Math.sin(M_rise * Math.PI / 180)) + (0.020 * Math.sin(2 * M_rise * Math.PI / 180)) + 282.634;
+            const L_set = M_set + (1.916 * Math.sin(M_set * Math.PI / 180)) + (0.020 * Math.sin(2 * M_set * Math.PI / 180)) + 282.634;
+
+            let RA_rise = Math.atan(0.91746 * Math.tan(L_rise * Math.PI / 180)) * 180 / Math.PI;
+            let RA_set = Math.atan(0.91746 * Math.tan(L_set * Math.PI / 180)) * 180 / Math.PI;
+
+            RA_rise = (RA_rise + 360) % 360 / 15;
+            RA_set = (RA_set + 360) % 360 / 15;
+
+            const sinDec_rise = 0.39782 * Math.sin(L_rise * Math.PI / 180);
+            const sinDec_set = 0.39782 * Math.sin(L_set * Math.PI / 180);
+            const cosDec_rise = Math.cos(Math.asin(sinDec_rise));
+            const cosDec_set = Math.cos(Math.asin(sinDec_set));
+
+            const cosH_rise = (Math.cos(90.833 * Math.PI / 180) - (sinDec_rise * Math.sin(lat * Math.PI / 180))) / (cosDec_rise * Math.cos(lat * Math.PI / 180));
+            const cosH_set = (Math.cos(90.833 * Math.PI / 180) - (sinDec_set * Math.sin(lat * Math.PI / 180))) / (cosDec_set * Math.cos(lat * Math.PI / 180));
+
+            const H_rise = (360 - Math.acos(cosH_rise) * 180 / Math.PI) / 15;
+            const H_set = (Math.acos(cosH_set) * 180 / Math.PI) / 15;
+
+            const UT_rise = H_rise + RA_rise - (0.06571 * tRise) - 6.622 - lngHour;
+            const UT_set = H_set + RA_set - (0.06571 * tSet) - 6.622 - lngHour;
+
+            const localRiseHours = (UT_rise + 24 + (now.getTimezoneOffset() / -60)) % 24;
+            const localSetHours = (UT_set + 24 + (now.getTimezoneOffset() / -60)) % 24;
+
+            const parseClockStr = (decimalHours) => {
+                const h = Math.floor(decimalHours);
+                const m = Math.floor((decimalHours - h) * 60);
+                const ampm = h >= 12 ? 'PM' : 'AM';
+                const displayH = h % 12 === 0 ? 12 : h % 12;
+                return `${displayH}:${m < 10 ? '0' + m : m} ${ampm}`;
+            };
+
+            document.getElementById('sun-rise').innerText = parseClockStr(localRiseHours);
+            document.getElementById('sun-set').innerText = parseClockStr(localSetHours);
+
+            const currentDecimalTime = now.getHours() + (now.getMinutes() / 60);
+            if (currentDecimalTime < localRiseHours || currentDecimalTime > localSetHours) {
                 document.body.classList.add('dark-theme');
             } else {
                 document.body.classList.remove('dark-theme');
             }
         }
-        computeSolarTimes();
+        computeSolarTimes(pinLat, pinLon);
 
-        // --- MAP GENERATION PANELS ---
+        // --- 3. EXECUTE CONTROLLED MAP LAYOUT INITIALIZATION ---
         const radarMap = L.map('radarMap', { ...lockSettings, center: [radarCenterLat, radarCenterLon], zoom: radarZoom });
         L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(radarMap);
         
@@ -287,7 +330,7 @@
         const outlookMap = L.map('outlookMap', { ...lockSettings, center: [outlookCenterLat, outlookCenterLon], zoom: outlookZoom });
         L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(outlookMap);
 
-        // Pin Positioning
+        // Render markers securely inside parsed target center views
         [radarMap, outlookMap].forEach(map => {
             L.circleMarker([pinLat, pinLon], { radius: 7, color: '#ffffff', fillColor: pinColor, fillOpacity: 1, weight: 2.5 }).addTo(map);
             if (pinLat2 && pinLon2) {
@@ -295,7 +338,7 @@
             }
         });
 
-        // --- HIGH AVAILABILITY SPC OUTLOOK GRAPHIC ENGINE ---
+        // --- 4. RELIABLE RASTER SPC OVERLAY ENGINE ---
         L.tileLayer.wms("https://mapservices.weather.noaa.gov/vector/services/outlooks/SPC_wx_outlks/MapServer/WmsServer", {
             layers: '1',
             format: 'image/png',
@@ -304,7 +347,7 @@
             version: '1.3.0'
         }).addTo(outlookMap);
 
-        // --- CLOUD CACHED CDN RADAR ENGINE ---
+        // --- 5. AUTOMATED RADAR OVERLAY TILE ENGINE ---
         let radarLayer = null;
         function refreshRadar() {
             fetch('https://api.rainviewer.com/public/maps.json')
@@ -317,12 +360,12 @@
                             tileSize: 256, opacity: 0.6, transparent: true
                         }).addTo(radarMap);
                     }
-                }).catch(err => console.log("Radar stream reset encountered."));
+                }).catch(err => console.log("Radar stream boundary sync drop."));
         }
         refreshRadar();
         setInterval(refreshRadar, 60000);
 
-        // --- LIVE PROBABILITIES ALERTS FEED ---
+        // --- 6. WEATHER INTERSECTION METRICS OVERLAYS ---
         const threatLayers = [
             { id: 3, elementId: 'prob-tor', unit: '%' },
             { id: 5, elementId: 'prob-hail', unit: '%' },
@@ -342,7 +385,7 @@
             }).catch(() => document.getElementById(layer.elementId).innerText = "0%");
         });
 
-        // --- FORECAST RECONSTRUCTION METRICS ---
+        // --- 7. GRID PANELS RENDER ENGINE ---
         fetch(`https://api.weather.gov/points/${pinLat},${pinLon}`, { headers })
             .then(res => res.json())
             .then(pointData => {
