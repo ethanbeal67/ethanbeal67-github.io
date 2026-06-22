@@ -191,7 +191,7 @@
         
         <div class="panel" style="padding:0;">
             <div class="media-container">
-                <img id="radarStream" class="media-stream" src="https://images.weserv.nl/?url=mesonet.agron.iastate.edu/data/nexrad/composite_loop.gif&n=-1" alt="Live Radar Loop">
+                <img id="radarStream" class="media-stream" src="https://radblast.wunderground.com/cgi-bin/radar/WUMap?rad=1&num=6&delay=15&type=A0&frame=0&scale=1.0&proj=latlon&bg=1&lightning=1" alt="Live Radar Loop">
                 <div id="radarPin1" class="tv-pin"></div>
                 <div id="radarPin2" class="tv-pin" style="display:none;"></div>
             </div>
@@ -199,7 +199,7 @@
 
         <div class="panel" style="padding:0;">
             <div class="media-container">
-                <img id="outlookStream" class="media-stream" src="https://images.weserv.nl/?url=mesonet.agron.iastate.edu/data/wpc/daily_opc.gif&n=-1" alt="Severe Weather Outlook">
+                <img id="outlookStream" class="media-stream" src="https://icons.wunderground.com/data/640x480/us_current_severe.gif" alt="Severe Weather Map">
                 <div id="outlookPin1" class="tv-pin"></div>
                 <div id="outlookPin2" class="tv-pin" style="display:none;"></div>
                 
@@ -243,7 +243,7 @@
 
         // --- 1. COORDINATE MAP METRIC PLOTTER ---
         function plotTVPins() {
-            // Map boundaries aligned with standard US geographic projection imagery
+            // Calibrated explicitly to the Weather Underground national projection models
             const minLat = 24.0, maxLat = 50.0;
             const minLon = -125.0, maxLon = -66.0;
             
@@ -275,12 +275,11 @@
         }
         plotTVPins();
 
-        // --- 2. AUTOMATIC PROXIED IMAGE REFRESH TIMERS ---
+        // --- 2. AUTOMATIC IMAGE FEED SILENT REFRESH TIMERS ---
         function reloadGraphicFeeds() {
             const cacheBuster = new Date().getTime();
-            // Appending a cache buster parameter to force the image proxy to pull the freshest weather images
-            document.getElementById('radarStream').src = "https://images.weserv.nl/?url=mesonet.agron.iastate.edu/data/nexrad/composite_loop.gif&n=-1&cache=" + cacheBuster;
-            document.getElementById('outlookStream').src = "https://images.weserv.nl/?url=mesonet.agron.iastate.edu/data/wpc/daily_opc.gif&n=-1&cache=" + cacheBuster;
+            document.getElementById('radarStream').src = "https://radblast.wunderground.com/cgi-bin/radar/WUMap?rad=1&num=6&delay=15&type=A0&frame=0&scale=1.0&proj=latlon&bg=1&lightning=1&cache=" + cacheBuster;
+            document.getElementById('outlookStream').src = "https://icons.wunderground.com/data/640x480/us_current_severe.gif?cache=" + cacheBuster;
         }
         setInterval(reloadGraphicFeeds, 300000); // Refreshes automatically every 5 minutes hands-free
 
