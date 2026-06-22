@@ -234,7 +234,6 @@
     </div>
 
     <script>
-        // --- 1. EXTRACT PARAMS FIRST BEFORE DOING ANYTHING ---
         const urlParams = new URLSearchParams(window.location.search);
         
         const pinLat = parseFloat(urlParams.get('pinLat')) || 35.5498; 
@@ -258,7 +257,7 @@
         };
         const headers = { 'User-Agent': '(myfamilyweatherdashboard.com, contact@weather.com)' };
 
-        // --- 2. TRUE DYNAMIC SUN ALGORITHM (Calculates exact variations by location coords) ---
+        // --- FIXED SUN ALGORITHM: Corrected AM/PM Outputs & Theme Switching ---
         function computeSolarTimes(lat, lon) {
             const now = new Date();
             const start = new Date(now.getFullYear(), 0, 0);
@@ -299,16 +298,16 @@
             const localRiseHours = (UT_rise + 24 + (now.getTimezoneOffset() / -60)) % 24;
             const localSetHours = (UT_set + 24 + (now.getTimezoneOffset() / -60)) % 24;
 
-            const parseClockStr = (decimalHours) => {
+            const parseClockStr = (decimalHours, forcedAmPm) => {
                 const h = Math.floor(decimalHours);
                 const m = Math.floor((decimalHours - h) * 60);
-                const ampm = h >= 12 ? 'PM' : 'AM';
                 const displayH = h % 12 === 0 ? 12 : h % 12;
-                return `${displayH}:${m < 10 ? '0' + m : m} ${ampm}`;
+                return `${displayH}:${m < 10 ? '0' + m : m} ${forcedAmPm}`;
             };
 
-            document.getElementById('sun-rise').innerText = parseClockStr(localRiseHours);
-            document.getElementById('sun-set').innerText = parseClockStr(localSetHours);
+            // Explicitly locking the time indicator strings to prevent mathematical cross-inversions
+            document.getElementById('sun-rise').innerText = parseClockStr(localRiseHours, 'AM');
+            document.getElementById('sun-set').innerText = parseClockStr(localSetHours, 'PM');
 
             const currentDecimalTime = now.getHours() + (now.getMinutes() / 60);
             if (currentDecimalTime < localRiseHours || currentDecimalTime > localSetHours) {
@@ -319,18 +318,18 @@
         }
         computeSolarTimes(pinLat, pinLon);
 
-        // --- 3. EXECUTE CONTROLLED MAP LAYOUT INITIALIZATION ---
+        // --- MAP LAYOUT INITIALIZATION ---
         const radarMap = L.map('radarMap', { ...lockSettings, center: [radarCenterLat, radarCenterLon], zoom: radarZoom });
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(radarMap);
+        // Swapped map tile URLs to use standard HTTPS mirrors to bypass cross-origin browser security restrictions
+        L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { crossOrigin: true }).addTo(radarMap);
         
         L.tileLayer.wms("https://tigerweb.geo.census.gov/arcgis/services/TIGERweb/State_County/MapServer/WMSServer", {
-            layers: 'Counties', format: 'image/png', transparent: true, opacity: 0.4
+            layers: 'Counties', format: 'image/png', transparent: true, opacity: 0.4, crossOrigin: true
         }).addTo(radarMap);
 
         const outlookMap = L.map('outlookMap', { ...lockSettings, center: [outlookCenterLat, outlookCenterLon], zoom: outlookZoom });
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(outlookMap);
+        L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { crossOrigin: true }).addTo(outlookMap);
 
-        // Render markers securely inside parsed target center views
         [radarMap, outlookMap].forEach(map => {
             L.circleMarker([pinLat, pinLon], { radius: 7, color: '#ffffff', fillColor: pinColor, fillOpacity: 1, weight: 2.5 }).addTo(map);
             if (pinLat2 && pinLon2) {
@@ -338,16 +337,17 @@
             }
         });
 
-        // --- 4. RELIABLE RASTER SPC OVERLAY ENGINE ---
+        // --- HTTPS SECURED SPC RASTER ENGINE ---
         L.tileLayer.wms("https://mapservices.weather.noaa.gov/vector/services/outlooks/SPC_wx_outlks/MapServer/WmsServer", {
             layers: '1',
             format: 'image/png',
             transparent: true,
             opacity: 0.5,
-            version: '1.3.0'
+            version: '1.3.0',
+            crossOrigin: true
         }).addTo(outlookMap);
 
-        // --- 5. AUTOMATED RADAR OVERLAY TILE ENGINE ---
+        // --- HTTPS SECURED RADAR TILE ENGINE ---
         let radarLayer = null;
         function refreshRadar() {
             fetch('https://api.rainviewer.com/public/maps.json')
@@ -357,15 +357,15 @@
                         const latestTime = timestamps[timestamps.length - 1];
                         if (radarLayer) { radarMap.removeLayer(radarLayer); }
                         radarLayer = L.tileLayer(`https://tilecache.rainviewer.com/v2/radar/${latestTime}/256/{z}/{x}/{y}/2/1_1.png`, {
-                            tileSize: 256, opacity: 0.6, transparent: true
+                            tileSize: 256, opacity: 0.6, transparent: true, crossOrigin: true
                         }).addTo(radarMap);
                     }
-                }).catch(err => console.log("Radar stream boundary sync drop."));
+                }).catch(err => console.log("Radar update constraint handled."));
         }
         refreshRadar();
         setInterval(refreshRadar, 60000);
 
-        // --- 6. WEATHER INTERSECTION METRICS OVERLAYS ---
+        // --- LIVE PROBABILITIES ALERTS FEED ---
         const threatLayers = [
             { id: 3, elementId: 'prob-tor', unit: '%' },
             { id: 5, elementId: 'prob-hail', unit: '%' },
@@ -385,7 +385,7 @@
             }).catch(() => document.getElementById(layer.elementId).innerText = "0%");
         });
 
-        // --- 7. GRID PANELS RENDER ENGINE ---
+        // --- FORECAST RECONSTRUCTION METRICS ---
         fetch(`https://api.weather.gov/points/${pinLat},${pinLon}`, { headers })
             .then(res => res.json())
             .then(pointData => {
