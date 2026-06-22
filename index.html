@@ -191,7 +191,7 @@
         
         <div class="panel" style="padding:0;">
             <div class="media-container">
-                <img id="radarStream" class="media-stream" src="https://mesonet.agron.iastate.edu/data/nexrad/composite_loop.gif" alt="Live Radar Loop">
+                <img id="radarStream" class="media-stream" src="https://images.weserv.nl/?url=mesonet.agron.iastate.edu/data/nexrad/composite_loop.gif&n=-1" alt="Live Radar Loop">
                 <div id="radarPin1" class="tv-pin"></div>
                 <div id="radarPin2" class="tv-pin" style="display:none;"></div>
             </div>
@@ -199,7 +199,7 @@
 
         <div class="panel" style="padding:0;">
             <div class="media-container">
-                <img id="outlookStream" class="media-stream" src="https://mesonet.agron.iastate.edu/data/wpc/daily_opc.gif" alt="Severe Weather Outlook">
+                <img id="outlookStream" class="media-stream" src="https://images.weserv.nl/?url=mesonet.agron.iastate.edu/data/wpc/daily_opc.gif&n=-1" alt="Severe Weather Outlook">
                 <div id="outlookPin1" class="tv-pin"></div>
                 <div id="outlookPin2" class="tv-pin" style="display:none;"></div>
                 
@@ -275,11 +275,12 @@
         }
         plotTVPins();
 
-        // --- 2. AUTOMATIC IMAGE FEED SILENT REFRESH TIMERS ---
+        // --- 2. AUTOMATIC PROXIED IMAGE REFRESH TIMERS ---
         function reloadGraphicFeeds() {
             const cacheBuster = new Date().getTime();
-            document.getElementById('radarStream').src = "https://mesonet.agron.iastate.edu/data/nexrad/composite_loop.gif?cache=" + cacheBuster;
-            document.getElementById('outlookStream').src = "https://mesonet.agron.iastate.edu/data/wpc/daily_opc.gif?cache=" + cacheBuster;
+            // Appending a cache buster parameter to force the image proxy to pull the freshest weather images
+            document.getElementById('radarStream').src = "https://images.weserv.nl/?url=mesonet.agron.iastate.edu/data/nexrad/composite_loop.gif&n=-1&cache=" + cacheBuster;
+            document.getElementById('outlookStream').src = "https://images.weserv.nl/?url=mesonet.agron.iastate.edu/data/wpc/daily_opc.gif&n=-1&cache=" + cacheBuster;
         }
         setInterval(reloadGraphicFeeds, 300000); // Refreshes automatically every 5 minutes hands-free
 
