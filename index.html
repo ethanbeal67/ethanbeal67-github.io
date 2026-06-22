@@ -5,9 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Family Weather Station</title>
     
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
     <style>
         :root {
             --bg-color: #f4f6f9;
@@ -84,13 +81,15 @@
             width: 100%; 
             height: 100%; 
             overflow: hidden;
+            border-radius: 8px;
         }
         
-        .map-instance { 
-            width: 100%; 
-            height: 100%; 
-            border-radius: 8px; 
-            background-color: #e5e9f0; 
+        .map-frame {
+            width: 100%;
+            height: 100%;
+            border: none;
+            border-radius: 8px;
+            background-color: #e5e9f0;
         }
 
         .forecast-list, .hourly-list {
@@ -171,37 +170,20 @@
             gap: 10px;
             pointer-events: none;
         }
-
-        .text-alert-overlay {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            width: 45%;
-            max-height: 85%;
-            background: var(--panel-bg);
-            border-radius: 6px;
-            padding: 10px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            z-index: 1001;
-            border-left: 5px solid #d32f2f;
-            display: none;
-            color: var(--text-main);
-        }
     </style>
 </head>
 <body>
 
     <div class="dashboard">
-        
         <div class="panel" style="padding:0;">
             <div class="map-wrapper">
-                <div id="radarMap" class="map-instance"></div>
+                <iframe id="radarFrame" class="map-frame" allow="geolocation"></iframe>
             </div>
         </div>
 
         <div class="panel" style="padding:0;">
             <div class="map-wrapper">
-                <div id="outlookMap" class="map-instance"></div>
+                <iframe id="outlookFrame" class="map-frame" allow="geolocation"></iframe>
                 
                 <div class="severe-breakdown" id="breakdownBox">
                     <div class="threat-item threat-tor">🌪️ Tornado: <span id="prob-tor">0%</span></div>
@@ -212,11 +194,6 @@
                 <div class="astro-panel" id="astroBox">
                     <span>🌅 Sunrise: <span id="sun-rise">--:--</span></span>
                     <span>🌇 Sunset: <span id="sun-set">--:--</span></span>
-                </div>
-
-                <div class="text-alert-overlay" id="alertBox">
-                    <div class="alert-title" id="alertBoxTitle">🚨 Alert Active</div>
-                    <div class="alert-desc" id="alertBoxDesc">Loading...</div>
                 </div>
             </div>
         </div>
@@ -230,7 +207,6 @@
             <h2>Hourly Forecast (Next 10 Hours)</h2>
             <div class="hourly-list" id="hourly-forecast">Loading hourly data...</div>
         </div>
-
     </div>
 
     <script>
@@ -238,26 +214,17 @@
         
         const pinLat = parseFloat(urlParams.get('pinLat')) || 35.5498; 
         const pinLon = parseFloat(urlParams.get('pinLon')) || -84.8866;
-        const pinColor = urlParams.get('pinColor') || '#00843D';
 
-        const pinLat2 = urlParams.get('pinLat2') ? parseFloat(urlParams.get('pinLat2')) : null;
-        const pinLon2 = urlParams.get('pinLon2') ? parseFloat(urlParams.get('pinLon2')) : null;
-        const pinColor2 = urlParams.get('pinColor2') || '#0C2340';
-        
-        const radarCenterLat = parseFloat(urlParams.get('radarLat')) || pinLat;
-        const radarCenterLon = parseFloat(urlParams.get('radarLon')) || pinLon;
-        const radarZoom = Math.round(parseInt(urlParams.get('radarZoom')) || 7);
-
-        const outlookCenterLat = parseFloat(urlParams.get('outlookLat')) || pinLat;
-        const outlookCenterLon = parseFloat(urlParams.get('outlookLon')) || pinLon;
-        const outlookZoom = Math.round(parseInt(urlParams.get('outlookZoom')) || 7);
-
-        const lockSettings = {
-            dragging: false, zoomControl: false, scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false, touchZoom: false
-        };
+        const radarZoom = Math.round(parseInt(urlParams.get('radarZoom')) || 8);
+        const outlookZoom = Math.round(parseInt(urlParams.get('outlookZoom')) || 5);
         const headers = { 'User-Agent': '(myfamilyweatherdashboard.com, contact@weather.com)' };
 
-        // --- FIXED SUN ALGORITHM: Corrected AM/PM Outputs & Theme Switching ---
+        // --- INJECT EMBEDDED MAP STREAMS INTO THE IFRAMES ---
+        // Dynamically generating interactive secure maps centered directly on your parameters
+        document.getElementById('radarFrame').src = `https://www.rainviewer.com/map.html?loc=${pinLat},${pinLon},${radarZoom}&o=1&t=1&e=1&v=1&w=1&sm=1&sn=1`;
+        document.getElementById('outlookFrame').src = `https://www.rainviewer.com/map.html?loc=${pinLat},${pinLon},${outlookZoom}&o=1&t=1&e=0&v=1&w=1&sm=0&sn=1`;
+
+        // --- FIXED SUN ENGINE: True Local Calculations and Theme Filters ---
         function computeSolarTimes(lat, lon) {
             const now = new Date();
             const start = new Date(now.getFullYear(), 0, 0);
@@ -305,67 +272,23 @@
                 return `${displayH}:${m < 10 ? '0' + m : m} ${forcedAmPm}`;
             };
 
-            // Explicitly locking the time indicator strings to prevent mathematical cross-inversions
             document.getElementById('sun-rise').innerText = parseClockStr(localRiseHours, 'AM');
             document.getElementById('sun-set').innerText = parseClockStr(localSetHours, 'PM');
 
-            const currentDecimalTime = now.getHours() + (now.getMinutes() / 60);
-            if (currentDecimalTime < localRiseHours || currentDecimalTime > localSetHours) {
-                document.body.classList.add('dark-theme');
-            } else {
+            const currentHours = now.getHours();
+            const currentMinutes = now.getMinutes();
+            const currentDecimalTime = currentHours + (currentMinutes / 60);
+
+            // Validates day or night constraints to control the theme state
+            if (currentDecimalTime >= localRiseHours && currentDecimalTime <= localSetHours) {
                 document.body.classList.remove('dark-theme');
+            } else {
+                document.body.classList.add('dark-theme');
             }
         }
         computeSolarTimes(pinLat, pinLon);
 
-        // --- MAP LAYOUT INITIALIZATION ---
-        const radarMap = L.map('radarMap', { ...lockSettings, center: [radarCenterLat, radarCenterLon], zoom: radarZoom });
-        // Swapped map tile URLs to use standard HTTPS mirrors to bypass cross-origin browser security restrictions
-        L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { crossOrigin: true }).addTo(radarMap);
-        
-        L.tileLayer.wms("https://tigerweb.geo.census.gov/arcgis/services/TIGERweb/State_County/MapServer/WMSServer", {
-            layers: 'Counties', format: 'image/png', transparent: true, opacity: 0.4, crossOrigin: true
-        }).addTo(radarMap);
-
-        const outlookMap = L.map('outlookMap', { ...lockSettings, center: [outlookCenterLat, outlookCenterLon], zoom: outlookZoom });
-        L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { crossOrigin: true }).addTo(outlookMap);
-
-        [radarMap, outlookMap].forEach(map => {
-            L.circleMarker([pinLat, pinLon], { radius: 7, color: '#ffffff', fillColor: pinColor, fillOpacity: 1, weight: 2.5 }).addTo(map);
-            if (pinLat2 && pinLon2) {
-                L.circleMarker([pinLat2, pinLon2], { radius: 7, color: '#ffffff', fillColor: pinColor2, fillOpacity: 1, weight: 2.5 }).addTo(map);
-            }
-        });
-
-        // --- HTTPS SECURED SPC RASTER ENGINE ---
-        L.tileLayer.wms("https://mapservices.weather.noaa.gov/vector/services/outlooks/SPC_wx_outlks/MapServer/WmsServer", {
-            layers: '1',
-            format: 'image/png',
-            transparent: true,
-            opacity: 0.5,
-            version: '1.3.0',
-            crossOrigin: true
-        }).addTo(outlookMap);
-
-        // --- HTTPS SECURED RADAR TILE ENGINE ---
-        let radarLayer = null;
-        function refreshRadar() {
-            fetch('https://api.rainviewer.com/public/maps.json')
-                .then(res => res.json())
-                .then(timestamps => {
-                    if (timestamps && timestamps.length > 0) {
-                        const latestTime = timestamps[timestamps.length - 1];
-                        if (radarLayer) { radarMap.removeLayer(radarLayer); }
-                        radarLayer = L.tileLayer(`https://tilecache.rainviewer.com/v2/radar/${latestTime}/256/{z}/{x}/{y}/2/1_1.png`, {
-                            tileSize: 256, opacity: 0.6, transparent: true, crossOrigin: true
-                        }).addTo(radarMap);
-                    }
-                }).catch(err => console.log("Radar update constraint handled."));
-        }
-        refreshRadar();
-        setInterval(refreshRadar, 60000);
-
-        // --- LIVE PROBABILITIES ALERTS FEED ---
+        // --- LIVE PROBABILITIES FEED ---
         const threatLayers = [
             { id: 3, elementId: 'prob-tor', unit: '%' },
             { id: 5, elementId: 'prob-hail', unit: '%' },
@@ -385,7 +308,7 @@
             }).catch(() => document.getElementById(layer.elementId).innerText = "0%");
         });
 
-        // --- FORECAST RECONSTRUCTION METRICS ---
+        // --- FORECAST DATA ENGINE ---
         fetch(`https://api.weather.gov/points/${pinLat},${pinLon}`, { headers })
             .then(res => res.json())
             .then(pointData => {
